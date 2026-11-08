@@ -1,20 +1,79 @@
 use crate::services::storage::providers::google_drive::models::GoogleDriveProviderConfig;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use oauth2::{
-    basic::BasicClient, reqwest::Client as OAuth2ReqwestClient, AuthUrl, ClientId, ClientSecret,
-    RefreshToken, TokenResponse, TokenUrl,
+    AuthUrl, ClientId, ClientSecret, RefreshToken, TokenResponse, TokenUrl, basic::BasicClient,
+    reqwest::Client as OAuth2ReqwestClient,
 };
-use reqwest::{header, Client};
 use reqwest::{Client as ReqwestClient, StatusCode};
-use serde_json::{json, Value};
+use reqwest::{Client, header};
+use serde_json::{Value, json};
 
 pub const DRIVE_FILES_URL: &str =
     "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true";
+pub const DRIVE_FILES_LIST_URL: &str = "https://www.googleapis.com/drive/v3/files";
 pub const DRIVE_RESUMABLE_UPLOAD_URL: &str =
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DriveFolderHit {
+    pub id: String,
+    pub created_time: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AfterCreateChoice {
+    pub use_id: String,
+    pub trash_own_if_empty: Option<String>,
+}
+
+pub fn pick_oldest_folder(folders: &[DriveFolderHit]) -> Option<&DriveFolderHit> {
+    folders.iter().min_by(|a, b| {
+        a.created_time
+            .cmp(&b.created_time)
+            .then_with(|| a.id.cmp(&b.id))
+    })
+}
+
+pub fn parse_folder_list(status: u16, body: &Value) -> Result<Vec<DriveFolderHit>> {
+    if !(200..300).contains(&status) {
+        return Err(anyhow!("list folders failed: HTTP {status}"));
+    }
+    let Some(files) = body.get("files").and_then(Value::as_array) else {
+        return Err(anyhow!("list folders failed: missing files"));
+    };
+    Ok(files
+        .iter()
+        .filter_map(|file| {
+            let id = file.get("id")?.as_str()?.to_string();
+            let created_time = file
+                .get("createdTime")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            Some(DriveFolderHit { id, created_time })
+        })
+        .collect())
+}
+
+pub fn after_create_choice(listed: &[DriveFolderHit], created_id: &str) -> AfterCreateChoice {
+    match pick_oldest_folder(listed) {
+        Some(oldest) if oldest.id != created_id => AfterCreateChoice {
+            use_id: oldest.id.clone(),
+            trash_own_if_empty: Some(created_id.to_string()),
+        },
+        Some(oldest) => AfterCreateChoice {
+            use_id: oldest.id.clone(),
+            trash_own_if_empty: None,
+        },
+        None => AfterCreateChoice {
+            use_id: created_id.to_string(),
+            trash_own_if_empty: None,
+        },
+    }
+}
 
 pub fn append_from_pending(buf: &mut Vec<u8>, pending: &mut Bytes, remaining: &mut u64) {
     if pending.is_empty() || *remaining == 0 {
@@ -85,6 +144,82 @@ pub async fn get_google_drive_token(config: &GoogleDriveProviderConfig) -> Resul
     Ok(token_result.access_token().secret().clone())
 }
 
+async fn list_named_folders(
+    client: &ReqwestClient,
+    token: &str,
+    parent_id: &str,
+    name: &str,
+) -> Result<Vec<DriveFolderHit>> {
+    let query = format!(
+        "'{parent_id}' in parents and name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    );
+
+    let res = client
+        .get(DRIVE_FILES_LIST_URL)
+        .bearer_auth(token)
+        .query(&[
+            ("q", query.as_str()),
+            ("fields", "files(id,name,createdTime)"),
+            ("orderBy", "createdTime"),
+            ("pageSize", "100"),
+            ("supportsAllDrives", "true"),
+            ("includeItemsFromAllDrives", "true"),
+            ("corpora", "allDrives"),
+        ])
+        .send()
+        .await
+        .context("list folders failed")?;
+
+    let status = res.status().as_u16();
+    let body = res.json::<Value>().await.context("list folders json")?;
+    parse_folder_list(status, &body)
+}
+
+async fn folder_has_children(client: &ReqwestClient, token: &str, folder_id: &str) -> Result<bool> {
+    let query = format!("'{folder_id}' in parents and trashed=false");
+    let res = client
+        .get(DRIVE_FILES_LIST_URL)
+        .bearer_auth(token)
+        .query(&[
+            ("q", query.as_str()),
+            ("fields", "files(id)"),
+            ("pageSize", "1"),
+            ("supportsAllDrives", "true"),
+            ("includeItemsFromAllDrives", "true"),
+            ("corpora", "allDrives"),
+        ])
+        .send()
+        .await
+        .context("list folder children failed")?;
+
+    let status = res.status().as_u16();
+    let body = res
+        .json::<Value>()
+        .await
+        .context("list folder children json")?;
+    let files = parse_folder_list(status, &body)?;
+    Ok(!files.is_empty())
+}
+
+async fn trash_own_folder(client: &ReqwestClient, token: &str, folder_id: &str) -> Result<()> {
+    let res = client
+        .patch(format!(
+            "{DRIVE_FILES_LIST_URL}/{folder_id}?supportsAllDrives=true"
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "trashed": true }))
+        .send()
+        .await
+        .context("trash folder failed")?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        return Err(anyhow!("trash folder failed: HTTP {status} {text}"));
+    }
+    Ok(())
+}
+
 pub async fn ensure_folder_path(
     config: &GoogleDriveProviderConfig,
     path_parts: &[&str],
@@ -98,33 +233,10 @@ pub async fn ensure_folder_path(
     let mut parent_id = config.folder_id.clone();
 
     for &name in path_parts {
-        let query = format!(
-            "'{parent_id}' in parents and name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        );
-
-        let res = client
-            .get("https://www.googleapis.com/drive/v3/files")
-            .bearer_auth(&token)
-            .query(&[
-                ("q", query),
-                ("fields", "files(id,name)".to_string()),
-                ("supportsAllDrives", "true".to_string()),
-                ("includeItemsFromAllDrives", "true".to_string()),
-                ("corpora", "allDrives".to_string()),
-            ])
-            .send()
-            .await
-            .context("list folders failed")?
-            .json::<Value>()
-            .await?;
-
-        if let Some(files) = res["files"].as_array() {
-            if let Some(folder) = files.first() {
-                if let Some(id) = folder["id"].as_str() {
-                    parent_id = id.to_string();
-                    continue;
-                }
-            }
+        let existing = list_named_folders(&client, &token, &parent_id, name).await?;
+        if let Some(oldest) = pick_oldest_folder(&existing) {
+            parent_id = oldest.id.clone();
+            continue;
         }
 
         let create_payload = json!({
@@ -133,20 +245,37 @@ pub async fn ensure_folder_path(
             "parents": [parent_id],
         });
 
-        let folder = client
+        let created = client
             .post(DRIVE_FILES_URL)
             .bearer_auth(&token)
             .json(&create_payload)
             .send()
             .await
-            .context("create folder failed")?
-            .json::<Value>()
-            .await?;
+            .context("create folder failed")?;
 
-        parent_id = folder["id"]
+        if !created.status().is_success() {
+            let status = created.status();
+            let text = created.text().await.unwrap_or_default();
+            return Err(anyhow!("create folder failed: HTTP {status} {text}"));
+        }
+
+        let folder = created
+            .json::<Value>()
+            .await
+            .context("create folder json")?;
+        let created_id = folder["id"]
             .as_str()
             .ok_or_else(|| anyhow!("No id returned after folder creation"))?
             .to_string();
+
+        let listed_again = list_named_folders(&client, &token, &parent_id, name).await?;
+        let choice = after_create_choice(&listed_again, &created_id);
+        if let Some(own_id) = choice.trash_own_if_empty.as_deref() {
+            if !folder_has_children(&client, &token, own_id).await? {
+                trash_own_folder(&client, &token, own_id).await?;
+            }
+        }
+        parent_id = choice.use_id;
     }
 
     Ok(parent_id)
@@ -163,29 +292,25 @@ pub async fn find_file_by_name(
     let query = format!("'{folder_id}' in parents and name='{file_name}' and trashed=false");
 
     let res = client
-        .get("https://www.googleapis.com/drive/v3/files")
+        .get(DRIVE_FILES_LIST_URL)
         .bearer_auth(&token)
         .query(&[
-            ("q", query),
-            ("fields", "files(id,name)".to_string()),
-            ("supportsAllDrives", "true".to_string()),
-            ("includeItemsFromAllDrives", "true".to_string()),
-            ("corpora", "allDrives".to_string()),
+            ("q", query.as_str()),
+            ("fields", "files(id,name,createdTime)"),
+            ("orderBy", "createdTime"),
+            ("pageSize", "100"),
+            ("supportsAllDrives", "true"),
+            ("includeItemsFromAllDrives", "true"),
+            ("corpora", "allDrives"),
         ])
         .send()
-        .await?
-        .json::<Value>()
-        .await?;
+        .await
+        .context("find file failed")?;
 
-    if let Some(files) = res["files"].as_array() {
-        if let Some(file) = files.first() {
-            if let Some(id) = file["id"].as_str() {
-                return Ok(Some(id.to_string()));
-            }
-        }
-    }
-
-    Ok(None)
+    let status = res.status().as_u16();
+    let body = res.json::<Value>().await.context("find file json")?;
+    let hits = parse_folder_list(status, &body)?;
+    Ok(pick_oldest_folder(&hits).map(|hit| hit.id.clone()))
 }
 
 pub async fn upload_stream_to_google_drive(
@@ -354,5 +479,100 @@ mod tests {
         assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("supportsAllDrives=true"));
         assert!(DRIVE_RESUMABLE_UPLOAD_URL.contains("uploadType=resumable"));
         assert!(DRIVE_FILES_URL.contains("supportsAllDrives=true"));
+    }
+
+    fn hit(id: &str, created_time: &str) -> DriveFolderHit {
+        DriveFolderHit {
+            id: id.to_string(),
+            created_time: created_time.to_string(),
+        }
+    }
+
+    #[test]
+    fn pick_oldest_folder_single() {
+        let folders = [hit("a", "2026-11-06T12:33:28.307Z")];
+        assert_eq!(pick_oldest_folder(&folders).unwrap().id, "a");
+    }
+
+    #[test]
+    fn pick_oldest_folder_two_created_times() {
+        let folders = [
+            hit("new", "2026-11-08T03:00:22.325Z"),
+            hit("old", "2026-11-06T12:33:28.307Z"),
+        ];
+        assert_eq!(pick_oldest_folder(&folders).unwrap().id, "old");
+    }
+
+    #[test]
+    fn pick_oldest_folder_tie_breaks_on_id() {
+        let folders = [
+            hit("z-new", "2026-11-06T12:33:28.307Z"),
+            hit("a-old", "2026-11-06T12:33:28.307Z"),
+        ];
+        assert_eq!(pick_oldest_folder(&folders).unwrap().id, "a-old");
+    }
+
+    #[test]
+    fn parse_folder_list_http_error_does_not_look_empty() {
+        let body = serde_json::json!({"error": {"code": 403, "message": "rateLimitExceeded"}});
+        let err = parse_folder_list(403, &body).unwrap_err().to_string();
+        assert!(err.contains("HTTP 403"), "{err}");
+    }
+
+    #[test]
+    fn parse_folder_list_200_without_files_is_error() {
+        let body = serde_json::json!({"error": {"code": 403}});
+        let err = parse_folder_list(200, &body).unwrap_err().to_string();
+        assert!(err.contains("missing files"), "{err}");
+    }
+
+    #[test]
+    fn parse_folder_list_reads_created_time() {
+        let body = serde_json::json!({
+            "files": [
+                {"id": "new", "createdTime": "2026-11-08T03:00:22.325Z"},
+                {"id": "old", "createdTime": "2026-11-06T12:33:28.307Z"}
+            ]
+        });
+        let hits = parse_folder_list(200, &body).unwrap();
+        assert_eq!(pick_oldest_folder(&hits).unwrap().id, "old");
+    }
+
+    #[test]
+    fn after_create_trashes_own_empty_when_older_exists() {
+        let listed = [
+            hit("old", "2026-11-06T12:33:28.307Z"),
+            hit("mine", "2026-11-08T03:00:22.325Z"),
+        ];
+        assert_eq!(
+            after_create_choice(&listed, "mine"),
+            AfterCreateChoice {
+                use_id: "old".to_string(),
+                trash_own_if_empty: Some("mine".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn after_create_keeps_own_when_list_still_empty() {
+        assert_eq!(
+            after_create_choice(&[], "mine"),
+            AfterCreateChoice {
+                use_id: "mine".to_string(),
+                trash_own_if_empty: None,
+            }
+        );
+    }
+
+    #[test]
+    fn after_create_keeps_own_when_it_is_oldest() {
+        let listed = [hit("mine", "2026-11-06T12:33:28.307Z")];
+        assert_eq!(
+            after_create_choice(&listed, "mine"),
+            AfterCreateChoice {
+                use_id: "mine".to_string(),
+                trash_own_if_empty: None,
+            }
+        );
     }
 }
