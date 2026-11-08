@@ -75,6 +75,71 @@ pub fn after_create_choice(listed: &[DriveFolderHit], created_id: &str) -> After
     }
 }
 
+pub const QUOTA_RETRY_MAX: u32 = 5;
+
+pub fn is_retryable_drive_quota(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    if status != 403 {
+        return false;
+    }
+    let body = body.to_ascii_lowercase();
+    body.contains("ratelimitexceeded")
+        || body.contains("userratelimitexceeded")
+        || body.contains("quotaexceeded")
+}
+
+pub fn quota_backoff_secs(attempt: u32) -> u64 {
+    5 * (1u64 << attempt.min(4))
+}
+
+pub async fn retry_drive_response<F, Fut>(send: F) -> Result<reqwest::Response>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+{
+    retry_drive_response_with_backoff(send, quota_backoff_secs).await
+}
+
+pub async fn retry_drive_response_with_backoff<F, Fut, B>(
+    mut send: F,
+    backoff_secs: B,
+) -> Result<reqwest::Response>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+    B: Fn(u32) -> u64,
+{
+    let mut retries = 0u32;
+    loop {
+        let res = match send().await {
+            Ok(res) => res,
+            Err(e) if e.is_timeout() || e.is_connect() => {
+                if retries >= QUOTA_RETRY_MAX {
+                    return Err(e).context("Too many retries");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(retries + 1))).await;
+                retries += 1;
+                continue;
+            }
+            Err(e) => return Err(e).context("drive request"),
+        };
+        let status = res.status();
+        if status.is_success() || status == StatusCode::PERMANENT_REDIRECT {
+            return Ok(res);
+        }
+        let code = status.as_u16();
+        let text = res.text().await.unwrap_or_default();
+        if is_retryable_drive_quota(code, &text) && retries < QUOTA_RETRY_MAX {
+            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs(retries))).await;
+            retries += 1;
+            continue;
+        }
+        return Err(anyhow!("Drive HTTP {code}: {text}"));
+    }
+}
+
 pub fn append_from_pending(buf: &mut Vec<u8>, pending: &mut Bytes, remaining: &mut u64) {
     if pending.is_empty() || *remaining == 0 {
         return;
@@ -154,21 +219,23 @@ async fn list_named_folders(
         "'{parent_id}' in parents and name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     );
 
-    let res = client
-        .get(DRIVE_FILES_LIST_URL)
-        .bearer_auth(token)
-        .query(&[
-            ("q", query.as_str()),
-            ("fields", "files(id,name,createdTime)"),
-            ("orderBy", "createdTime"),
-            ("pageSize", "100"),
-            ("supportsAllDrives", "true"),
-            ("includeItemsFromAllDrives", "true"),
-            ("corpora", "allDrives"),
-        ])
-        .send()
-        .await
-        .context("list folders failed")?;
+    let res = retry_drive_response(|| {
+        client
+            .get(DRIVE_FILES_LIST_URL)
+            .bearer_auth(token)
+            .query(&[
+                ("q", query.as_str()),
+                ("fields", "files(id,name,createdTime)"),
+                ("orderBy", "createdTime"),
+                ("pageSize", "100"),
+                ("supportsAllDrives", "true"),
+                ("includeItemsFromAllDrives", "true"),
+                ("corpora", "allDrives"),
+            ])
+            .send()
+    })
+    .await
+    .context("list folders failed")?;
 
     let status = res.status().as_u16();
     let body = res.json::<Value>().await.context("list folders json")?;
@@ -177,20 +244,22 @@ async fn list_named_folders(
 
 async fn folder_has_children(client: &ReqwestClient, token: &str, folder_id: &str) -> Result<bool> {
     let query = format!("'{folder_id}' in parents and trashed=false");
-    let res = client
-        .get(DRIVE_FILES_LIST_URL)
-        .bearer_auth(token)
-        .query(&[
-            ("q", query.as_str()),
-            ("fields", "files(id)"),
-            ("pageSize", "1"),
-            ("supportsAllDrives", "true"),
-            ("includeItemsFromAllDrives", "true"),
-            ("corpora", "allDrives"),
-        ])
-        .send()
-        .await
-        .context("list folder children failed")?;
+    let res = retry_drive_response(|| {
+        client
+            .get(DRIVE_FILES_LIST_URL)
+            .bearer_auth(token)
+            .query(&[
+                ("q", query.as_str()),
+                ("fields", "files(id)"),
+                ("pageSize", "1"),
+                ("supportsAllDrives", "true"),
+                ("includeItemsFromAllDrives", "true"),
+                ("corpora", "allDrives"),
+            ])
+            .send()
+    })
+    .await
+    .context("list folder children failed")?;
 
     let status = res.status().as_u16();
     let body = res
@@ -202,21 +271,17 @@ async fn folder_has_children(client: &ReqwestClient, token: &str, folder_id: &st
 }
 
 async fn trash_own_folder(client: &ReqwestClient, token: &str, folder_id: &str) -> Result<()> {
-    let res = client
-        .patch(format!(
-            "{DRIVE_FILES_LIST_URL}/{folder_id}?supportsAllDrives=true"
-        ))
-        .bearer_auth(token)
-        .json(&json!({ "trashed": true }))
-        .send()
-        .await
-        .context("trash folder failed")?;
-
-    if !res.status().is_success() {
-        let status = res.status();
-        let text = res.text().await.unwrap_or_default();
-        return Err(anyhow!("trash folder failed: HTTP {status} {text}"));
-    }
+    retry_drive_response(|| {
+        client
+            .patch(format!(
+                "{DRIVE_FILES_LIST_URL}/{folder_id}?supportsAllDrives=true"
+            ))
+            .bearer_auth(token)
+            .json(&json!({ "trashed": true }))
+            .send()
+    })
+    .await
+    .context("trash folder failed")?;
     Ok(())
 }
 
@@ -245,19 +310,15 @@ pub async fn ensure_folder_path(
             "parents": [parent_id],
         });
 
-        let created = client
-            .post(DRIVE_FILES_URL)
-            .bearer_auth(&token)
-            .json(&create_payload)
-            .send()
-            .await
-            .context("create folder failed")?;
-
-        if !created.status().is_success() {
-            let status = created.status();
-            let text = created.text().await.unwrap_or_default();
-            return Err(anyhow!("create folder failed: HTTP {status} {text}"));
-        }
+        let created = retry_drive_response(|| {
+            client
+                .post(DRIVE_FILES_URL)
+                .bearer_auth(&token)
+                .json(&create_payload)
+                .send()
+        })
+        .await
+        .context("create folder failed")?;
 
         let folder = created
             .json::<Value>()
@@ -291,21 +352,23 @@ pub async fn find_file_by_name(
 
     let query = format!("'{folder_id}' in parents and name='{file_name}' and trashed=false");
 
-    let res = client
-        .get(DRIVE_FILES_LIST_URL)
-        .bearer_auth(&token)
-        .query(&[
-            ("q", query.as_str()),
-            ("fields", "files(id,name,createdTime)"),
-            ("orderBy", "createdTime"),
-            ("pageSize", "100"),
-            ("supportsAllDrives", "true"),
-            ("includeItemsFromAllDrives", "true"),
-            ("corpora", "allDrives"),
-        ])
-        .send()
-        .await
-        .context("find file failed")?;
+    let res = retry_drive_response(|| {
+        client
+            .get(DRIVE_FILES_LIST_URL)
+            .bearer_auth(&token)
+            .query(&[
+                ("q", query.as_str()),
+                ("fields", "files(id,name,createdTime)"),
+                ("orderBy", "createdTime"),
+                ("pageSize", "100"),
+                ("supportsAllDrives", "true"),
+                ("includeItemsFromAllDrives", "true"),
+                ("corpora", "allDrives"),
+            ])
+            .send()
+    })
+    .await
+    .context("find file failed")?;
 
     let status = res.status().as_u16();
     let body = res.json::<Value>().await.context("find file json")?;
@@ -348,20 +411,17 @@ pub async fn upload_stream_to_google_drive(
         "mimeType": mime,
     });
 
-    let session_res = client
-        .post(DRIVE_RESUMABLE_UPLOAD_URL)
-        .bearer_auth(&token)
-        .header("X-Upload-Content-Type", mime)
-        .header("X-Upload-Content-Length", total_size.to_string()) // Helps a lot
-        .json(&metadata)
-        .send()
-        .await
-        .context("Failed to initiate resumable upload")?;
-
-    if session_res.status() != StatusCode::OK {
-        let text = session_res.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!("Initiate failed: {}", text));
-    }
+    let session_res = retry_drive_response(|| {
+        client
+            .post(DRIVE_RESUMABLE_UPLOAD_URL)
+            .bearer_auth(&token)
+            .header("X-Upload-Content-Type", mime)
+            .header("X-Upload-Content-Length", total_size.to_string()) // Helps a lot
+            .json(&metadata)
+            .send()
+    })
+    .await
+    .context("Failed to initiate resumable upload")?;
 
     let upload_url = session_res
         .headers()
@@ -408,44 +468,18 @@ pub async fn upload_stream_to_google_drive(
             format!("bytes {}-{}/*", uploaded, range_end)
         };
 
-        let mut retries = 0;
-        loop {
-            let res = client
+        retry_drive_response(|| {
+            client
                 .put(&upload_url)
                 .header("Content-Range", &content_range)
                 .header("Content-Length", chunk_bytes.len().to_string())
-                .body(chunk_bytes.clone()) // clone is cheap if small; optimize later if needed
+                .body(chunk_bytes.clone())
                 .send()
-                .await;
-
-            match res {
-                Ok(resp)
-                    if resp.status().is_success()
-                        || resp.status() == StatusCode::PERMANENT_REDIRECT =>
-                {
-                    // 200 or 308 = good
-                    uploaded += chunk_bytes.len() as u64;
-                    tracing::info!("Uploaded {}/{} bytes", uploaded, total_size);
-                    break;
-                }
-                Ok(resp) if resp.status() == StatusCode::TOO_MANY_REQUESTS => {
-                    // Backoff on 429
-                    tokio::time::sleep(std::time::Duration::from_secs(5 * (1 << retries))).await;
-                }
-                Ok(resp) => {
-                    let text = resp.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!("Chunk upload failed: {}", text));
-                }
-                Err(e) if e.is_timeout() || e.is_connect() => {
-                    if retries > 5 {
-                        return Err(e).context("Too many retries");
-                    }
-                    retries += 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(retries))).await;
-                }
-                Err(e) => return Err(e).context("Chunk request failed"),
-            }
-        }
+        })
+        .await
+        .context("Chunk upload failed")?;
+        uploaded += chunk_bytes.len() as u64;
+        tracing::info!("Uploaded {}/{} bytes", uploaded, total_size);
     }
 
     Ok(())
@@ -574,5 +608,91 @@ mod tests {
                 trash_own_if_empty: None,
             }
         );
+    }
+
+    #[test]
+    fn quota_429_is_retryable() {
+        assert!(is_retryable_drive_quota(429, ""));
+    }
+
+    #[test]
+    fn quota_403_rate_limit_is_retryable() {
+        let body = r#"{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}"#;
+        assert!(is_retryable_drive_quota(403, body));
+    }
+
+    #[test]
+    fn quota_403_user_and_quota_reasons_are_retryable() {
+        assert!(is_retryable_drive_quota(
+            403,
+            r#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#
+        ));
+        assert!(is_retryable_drive_quota(403, "QuotaExceeded"));
+    }
+
+    #[test]
+    fn other_403_is_not_retryable() {
+        let body = r#"{"error":{"errors":[{"reason":"insufficientFilePermissions"}]}}"#;
+        assert!(!is_retryable_drive_quota(403, body));
+    }
+
+    #[test]
+    fn quota_backoff_doubles_from_five_seconds() {
+        assert_eq!(quota_backoff_secs(0), 5);
+        assert_eq!(quota_backoff_secs(1), 10);
+        assert_eq!(quota_backoff_secs(2), 20);
+        assert_eq!(quota_backoff_secs(4), 80);
+        assert_eq!(quota_backoff_secs(8), 80);
+    }
+
+    #[tokio::test]
+    async fn retries_403_quota_then_succeeds() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_string(r#"{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}"#),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let url = format!("{}/files", server.uri());
+        let resp = retry_drive_response_with_backoff(|| client.get(&url).send(), |_| 0)
+            .await
+            .expect("retry");
+        assert!(resp.status().is_success());
+    }
+
+    #[tokio::test]
+    async fn other_403_fails_without_retry() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_string(
+                r#"{"error":{"errors":[{"reason":"insufficientFilePermissions"}]}}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let url = format!("{}/files", server.uri());
+        let err = retry_drive_response_with_backoff(|| client.get(&url).send(), |_| 0)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Drive HTTP 403"), "{err}");
+        assert!(err.contains("insufficientFilePermissions"), "{err}");
     }
 }
