@@ -1,9 +1,9 @@
-name: Publish Google Drive image gdrive3
+name: Publish Google Drive image gdrive4
 
 on:
   workflow_dispatch:
   push:
-    branches: [oxem/1.26.2-gdrive3]
+    branches: [oxem/1.26.2-gdrive4]
 
 permissions:
   contents: read
@@ -31,4 +31,4 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
-          tags: ghcr.io/romzes5000/portabase-agent:1.26.2-gdrive3
+          tags: ghcr.io/romzes5000/portabase-agent:1.26.2-gdrive4
