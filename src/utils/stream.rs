@@ -1,16 +1,14 @@
+use crate::settings::CONFIG;
 use crate::utils::file::encrypt_file_stream_gcm;
 use anyhow::Result;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
-use tokio::io::{AsyncReadExt};
-use crate::settings::CONFIG;
+use tokio::io::AsyncReadExt;
 
 pub struct UploadStream {
     pub stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
 }
-
-
 
 pub async fn build_stream(
     file_path: &std::path::Path,

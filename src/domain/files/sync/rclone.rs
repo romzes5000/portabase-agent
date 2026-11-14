@@ -11,8 +11,17 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-pub fn replica_target(remote_name: &str, base_path: &str, folder: &str, generated_id: &str) -> String {
-    remote_target(remote_name, base_path, &format!("{folder}/sync/{generated_id}/current"))
+pub fn replica_target(
+    remote_name: &str,
+    base_path: &str,
+    folder: &str,
+    generated_id: &str,
+) -> String {
+    remote_target(
+        remote_name,
+        base_path,
+        &format!("{folder}/sync/{generated_id}/current"),
+    )
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -30,13 +39,19 @@ impl Mode {
     }
 }
 
-pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode: Mode, logger: &JobLogger) -> Result<SyncStats> {
+pub async fn sync_dir(
+    config_text: &str,
+    dest: &str,
+    cfg: &DatabaseConfig,
+    mode: Mode,
+    logger: &JobLogger,
+) -> Result<SyncStats> {
     let root = source_root(cfg)?;
     if mode == Mode::Sync
         && std::fs::read_dir(&root)
-        .with_context(|| format!("cannot read source directory {}", root.display()))?
-        .next()
-        .is_none()
+            .with_context(|| format!("cannot read source directory {}", root.display()))?
+            .next()
+            .is_none()
     {
         bail!(
             "source directory {} is empty; refusing to sync so an unmounted volume cannot wipe the replica",
@@ -44,7 +59,11 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
         );
     }
     let config = write_config(config_text)?;
-    let limits = if mode == Mode::Sync { delete_limits(cfg) } else { Vec::new() };
+    let limits = if mode == Mode::Sync {
+        delete_limits(cfg)
+    } else {
+        Vec::new()
+    };
     if !limits.is_empty() {
         logger.log("info", "Checking the delete limits with a dry run");
         preflight(config.path(), &root, dest, cfg, &limits).await?;
@@ -52,7 +71,12 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
 
     let mut cmd = rclone_command(config.path(), mode, &root, dest, cfg, &limits);
     let debug = tracing::enabled!(tracing::Level::DEBUG);
-    cmd.args(["--stats-log-level", "NOTICE", "--stats", if debug { "5s" } else { "1h" }]);
+    cmd.args([
+        "--stats-log-level",
+        "NOTICE",
+        "--stats",
+        if debug { "5s" } else { "1h" },
+    ]);
 
     let (doing, done) = match mode {
         Mode::Sync => ("Syncing", "Synced"),
@@ -66,12 +90,20 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
         .kill_on_drop(true)
         .spawn()
         .map_err(spawn_error)?;
-    let mut lines = BufReader::new(child.stderr.take().context("rclone stderr unavailable")?).lines();
+    let mut lines =
+        BufReader::new(child.stderr.take().context("rclone stderr unavailable")?).lines();
     let mut stderr = String::new();
-    while let Some(line) = lines.next_line().await.context("failed to read rclone output")? {
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .context("failed to read rclone output")?
+    {
         if debug {
             if let Some(progress) = progress(&line) {
-                logger.log("debug", format!("progress: rclone {}: {progress}", mode.verb()));
+                logger.log(
+                    "debug",
+                    format!("progress: rclone {}: {progress}", mode.verb()),
+                );
             }
         }
         stderr.push_str(&line);
@@ -90,7 +122,10 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
             .and_then(|s| s.last_error.clone())
             .or_else(|| log.errors.last().cloned())
             .unwrap_or_else(|| "no error message".to_string());
-        bail!("rclone {} failed ({status}): {reason}; the replica may be partially updated", mode.verb());
+        bail!(
+            "rclone {} failed ({status}): {reason}; the replica may be partially updated",
+            mode.verb()
+        );
     }
     let mut stats = log.stats.unwrap_or_default();
     stats.replica_bytes = match remote_size(config.path(), dest).await {
@@ -100,10 +135,16 @@ pub async fn sync_dir(config_text: &str, dest: &str, cfg: &DatabaseConfig, mode:
             None
         }
     };
-    let replica = stats.replica_bytes.map(|b| format!("; replica holds {b} bytes")).unwrap_or_default();
+    let replica = stats
+        .replica_bytes
+        .map(|b| format!("; replica holds {b} bytes"))
+        .unwrap_or_default();
     logger.log(
         "info",
-        format!("{done}: {} file(s) transferred ({} bytes), {} deleted{replica}", stats.transfers, stats.bytes, stats.deletes),
+        format!(
+            "{done}: {} file(s) transferred ({} bytes), {} deleted{replica}",
+            stats.transfers, stats.bytes, stats.deletes
+        ),
     );
     Ok(stats)
 }
@@ -133,7 +174,16 @@ fn rclone_command(
         .arg(mode.verb())
         .arg(root)
         .arg(dest)
-        .args(["--links", "--use-json-log", "--retries", "1", "--contimeout", "30s", "--low-level-retries", "3"]);
+        .args([
+            "--links",
+            "--use-json-log",
+            "--retries",
+            "1",
+            "--contimeout",
+            "30s",
+            "--low-level-retries",
+            "3",
+        ]);
     if mode == Mode::Sync {
         cmd.arg("--delete-excluded");
     }
@@ -149,7 +199,13 @@ fn rclone_command(
     cmd
 }
 
-async fn preflight(config: &Path, root: &Path, dest: &str, cfg: &DatabaseConfig, limits: &[(&str, String)]) -> Result<()> {
+async fn preflight(
+    config: &Path,
+    root: &Path,
+    dest: &str,
+    cfg: &DatabaseConfig,
+    limits: &[(&str, String)],
+) -> Result<()> {
     let output = rclone_command(config, Mode::Sync, root, dest, cfg, limits)
         .args(["--dry-run", "--log-level", "ERROR"])
         .stdin(Stdio::null())
@@ -162,13 +218,25 @@ async fn preflight(config: &Path, root: &Path, dest: &str, cfg: &DatabaseConfig,
         return Ok(());
     }
     let log = parse_log(&String::from_utf8_lossy(&output.stderr));
-    if log.errors.iter().any(|error| error.contains("threshold reached")) {
-        let limits = limits.iter().map(|(flag, value)| format!("{flag} {value}")).collect::<Vec<_>>().join(", ");
+    if log
+        .errors
+        .iter()
+        .any(|error| error.contains("threshold reached"))
+    {
+        let limits = limits
+            .iter()
+            .map(|(flag, value)| format!("{flag} {value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         bail!(
             "sync would delete more than the limit ({limits}); nothing was deleted. Raise or clear the limit to accept the deletions"
         );
     }
-    let reason = log.errors.last().cloned().unwrap_or_else(|| "no error message".to_string());
+    let reason = log
+        .errors
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "no error message".to_string());
     bail!("rclone sync dry run failed ({}): {reason}", output.status);
 }
 
@@ -181,7 +249,13 @@ fn spawn_error(error: std::io::Error) -> anyhow::Error {
 
 async fn remote_size(config: &Path, target: &str) -> Result<u64> {
     let out = Command::new("rclone")
-        .args(["--contimeout", "30s", "--low-level-retries", "3", "--config"])
+        .args([
+            "--contimeout",
+            "30s",
+            "--low-level-retries",
+            "3",
+            "--config",
+        ])
         .arg(config)
         .arg("size")
         .arg(target)
@@ -192,8 +266,15 @@ async fn remote_size(config: &Path, target: &str) -> Result<u64> {
         .await
         .context("failed to start rclone")?;
     if !out.status.success() {
-        bail!("rclone size failed ({}): {}", out.status, String::from_utf8_lossy(&out.stderr).trim());
+        bail!(
+            "rclone size failed ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
-    let size: serde_json::Value = serde_json::from_slice(&out.stdout).context("unexpected rclone size output")?;
-    size["bytes"].as_u64().context("rclone size returned no byte count")
+    let size: serde_json::Value =
+        serde_json::from_slice(&out.stdout).context("unexpected rclone size output")?;
+    size["bytes"]
+        .as_u64()
+        .context("rclone size returned no byte count")
 }

@@ -81,7 +81,13 @@ async fn mongodb_backup_restore_test() {
     let backup_path = temp_dir.path();
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let file_path = db
+        .backup(
+            backup_path,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+        .unwrap();
     info!("Backup path: {:?}", file_path);
     assert!(file_path.is_file());
 
@@ -91,7 +97,13 @@ async fn mongodb_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
+    match db
+        .restore(
+            &file_path,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+    {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)
@@ -108,12 +120,14 @@ async fn mongodb_backup_skips_excluded_collections() {
     init_tracing_for_test();
 
     let (_container, mut config) = create_config().await;
-    config
-        .options
-        .insert("exclude_collections".into(), serde_json::json!(["events", " sessions ", ""]));
-    config
-        .options
-        .insert("exclude_collections_with_prefix".into(), serde_json::json!(["cache_", "tmp_"]));
+    config.options.insert(
+        "exclude_collections".into(),
+        serde_json::json!(["events", " sessions ", ""]),
+    );
+    config.options.insert(
+        "exclude_collections_with_prefix".into(),
+        serde_json::json!(["cache_", "tmp_"]),
+    );
 
     let client = Client::with_uri_str(format!("mongodb://{}:{}", config.host, config.port))
         .await
@@ -121,27 +135,52 @@ async fn mongodb_backup_skips_excluded_collections() {
     let database = client.database(&config.database);
     let collection = |name: &str| database.collection::<mongodb::bson::Document>(name);
     for name in ["users", "events", "sessions", "cache_pages", "tmp_import"] {
-        collection(name).insert_one(doc! { "name": name }).await.unwrap();
+        collection(name)
+            .insert_one(doc! { "name": name })
+            .await
+            .unwrap();
     }
 
     let temp_dir = TempDir::new().unwrap();
     let backup_logger = Arc::new(JobLogger::new());
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
-    let file_path = db.backup(temp_dir.path(), backup_logger.clone()).await.unwrap();
+    let file_path = db
+        .backup(temp_dir.path(), backup_logger.clone())
+        .await
+        .unwrap();
 
     collection("users").drop().await.unwrap();
     for name in ["events", "cache_pages"] {
-        collection(name).insert_one(doc! { "name": "kept" }).await.unwrap();
+        collection(name)
+            .insert_one(doc! { "name": "kept" })
+            .await
+            .unwrap();
     }
 
     let db = DatabaseFactory::create_for_restore(config.clone(), &file_path).await;
-    db.restore(&file_path, Arc::new(JobLogger::new())).await.unwrap();
+    db.restore(&file_path, Arc::new(JobLogger::new()))
+        .await
+        .unwrap();
 
-    assert_eq!(collection("users").count_documents(doc! {}).await.unwrap(), 1);
-    assert_eq!(collection("events").count_documents(doc! {}).await.unwrap(), 2);
-    assert_eq!(collection("cache_pages").count_documents(doc! {}).await.unwrap(), 2);
+    assert_eq!(
+        collection("users").count_documents(doc! {}).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        collection("events").count_documents(doc! {}).await.unwrap(),
+        2
+    );
+    assert_eq!(
+        collection("cache_pages")
+            .count_documents(doc! {})
+            .await
+            .unwrap(),
+        2
+    );
 
-    let entries = Arc::try_unwrap(backup_logger).expect("single owner").into_entries();
+    let entries = Arc::try_unwrap(backup_logger)
+        .expect("single owner")
+        .into_entries();
     assert!(entries.iter().any(|e| e.message
         == format!(
             "Excluding from dump of {}: --excludeCollection=events --excludeCollection=sessions --excludeCollectionsWithPrefix=cache_ --excludeCollectionsWithPrefix=tmp_",
@@ -207,7 +246,8 @@ fn uri_options_authsource_replicaset_tls() {
     let mut c = uri_cfg("localhost", 27017, "user", "pass");
     c.options.insert("auth_source".into(), "myauthdb".into());
     c.options.insert("replica_set".into(), "rs0".into());
-    c.options.insert("tls".into(), serde_json::Value::Bool(true));
+    c.options
+        .insert("tls".into(), serde_json::Value::Bool(true));
     assert_eq!(
         build_mongo_uri(&c, true),
         "mongodb://user:pass@localhost:27017/mydb?authSource=myauthdb&replicaSet=rs0&tls=true"

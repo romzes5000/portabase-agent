@@ -94,7 +94,11 @@ async fn transfer(
             })
         }
         FilesEngine::Sync | FilesEngine::Copy => {
-            let mode = if matches!(engine, FilesEngine::Copy) { Mode::Copy } else { Mode::Sync };
+            let mode = if matches!(engine, FilesEngine::Copy) {
+                Mode::Copy
+            } else {
+                Mode::Sync
+            };
             let stats = replicate(&ctx.edge_key, cfg, storage, mode, logger).await?;
             Ok(Transfer {
                 remote_path: replica_path(storage, &cfg.generated_id),
@@ -125,7 +129,13 @@ pub(crate) async fn one_storage(
 
     let backup_storage_id = match ctx
         .api
-        .backup_upload_init(agent_id.clone(), cfg.generated_id.clone(), storage.id.clone(), backup_id, Some(engine.as_str()))
+        .backup_upload_init(
+            agent_id.clone(),
+            cfg.generated_id.clone(),
+            storage.id.clone(),
+            backup_id,
+            Some(engine.as_str()),
+        )
         .await
     {
         Ok(Some(response)) => response.backup_storage.id,
@@ -142,7 +152,15 @@ pub(crate) async fn one_storage(
     match transfer(ctx, cfg, engine, storage, &backup_storage_id, logger).await {
         Ok(t) => match ctx
             .api
-            .backup_upload_success(agent_id, cfg.generated_id.clone(), backup_storage_id, t.remote_path.clone(), t.size, t.report, backup_id)
+            .backup_upload_success(
+                agent_id,
+                cfg.generated_id.clone(),
+                backup_storage_id,
+                t.remote_path.clone(),
+                t.size,
+                t.report,
+                backup_id,
+            )
             .await
         {
             Ok(_) => UploadResult {
@@ -153,18 +171,35 @@ pub(crate) async fn one_storage(
                 total_size: t.total_size,
             },
             Err(e) => {
-                logger.log("error", format!("Upload status update failed for {}: {e}", storage.id));
+                logger.log(
+                    "error",
+                    format!("Upload status update failed for {}: {e}", storage.id),
+                );
                 failed(e.to_string())
             }
         },
         Err(e) => {
-            logger.log("error", format!("{} to storage {} failed: {e:#}", engine.label(), storage.id));
+            logger.log(
+                "error",
+                format!("{} to storage {} failed: {e:#}", engine.label(), storage.id),
+            );
             if let Err(err) = ctx
                 .api
-                .backup_upload_status(agent_id, cfg.generated_id.clone(), backup_storage_id, "failed", String::new(), 0u64, backup_id)
+                .backup_upload_status(
+                    agent_id,
+                    cfg.generated_id.clone(),
+                    backup_storage_id,
+                    "failed",
+                    String::new(),
+                    0u64,
+                    backup_id,
+                )
                 .await
             {
-                logger.log("error", format!("Failed-status update failed for {}: {err}", storage.id));
+                logger.log(
+                    "error",
+                    format!("Failed-status update failed for {}: {err}", storage.id),
+                );
             }
             failed(format!("{e:#}"))
         }

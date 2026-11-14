@@ -6,7 +6,9 @@ use crate::services::api::endpoints::status::DatabasePayload;
 use crate::services::api::models::agent::status::DatabaseStatus;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::api::models::agent::status::PingResult;
-use crate::services::config::{build_config, files_method, DatabaseConfig, DbType, InputDatabaseConfig};
+use crate::services::config::{
+    DatabaseConfig, DbType, InputDatabaseConfig, build_config, files_method,
+};
 use crate::settings::CONFIG;
 use crate::utils::file::decrypt_json_gcm;
 use futures::future::try_join_all;
@@ -36,7 +38,11 @@ pub fn resolve_dashboard_config(
     Ok(())
 }
 
-fn decrypt_storage(ciphertext: &str, master_key_b64: &str, what: &str) -> Result<Option<DatabaseStorage>, String> {
+fn decrypt_storage(
+    ciphertext: &str,
+    master_key_b64: &str,
+    what: &str,
+) -> Result<Option<DatabaseStorage>, String> {
     let plaintext = decrypt_json_gcm(ciphertext, master_key_b64)
         .map_err(|e| format!("Failed to decrypt {what} storage: {e}"))?;
     let storages: Vec<DatabaseStorage> = serde_json::from_slice(&plaintext)
@@ -44,7 +50,10 @@ fn decrypt_storage(ciphertext: &str, master_key_b64: &str, what: &str) -> Result
     Ok(storages.into_iter().next())
 }
 
-pub fn resolve_restore_storage(status: &mut DatabaseStatus, master_key_b64: &str) -> Result<(), String> {
+pub fn resolve_restore_storage(
+    status: &mut DatabaseStatus,
+    master_key_b64: &str,
+) -> Result<(), String> {
     if let Some(ciphertext) = status.data.restore.storage_ciphertext.clone() {
         status.data.restore.storage = decrypt_storage(&ciphertext, master_key_b64, "restore")?;
     }
@@ -52,7 +61,8 @@ pub fn resolve_restore_storage(status: &mut DatabaseStatus, master_key_b64: &str
 }
 
 pub fn payload_method(db: &DatabaseConfig, local_ids: &HashSet<String>) -> Option<&'static str> {
-    (matches!(db.db_type, DbType::Files) && local_ids.contains(&db.generated_id)).then(|| files_method(db))
+    (matches!(db.db_type, DbType::Files) && local_ids.contains(&db.generated_id))
+        .then(|| files_method(db))
 }
 
 pub struct StatusService {
@@ -118,7 +128,10 @@ impl StatusService {
                 tracing::warn!("Skipping dashboard config for {}: {e}", db.generated_id);
             }
             if let Err(e) = resolve_restore_storage(db, &edge_key.master_key_b64) {
-                tracing::warn!("Snapshot restore storage unreadable for {}: {e}", db.generated_id);
+                tracing::warn!(
+                    "Snapshot restore storage unreadable for {}: {e}",
+                    db.generated_id
+                );
             }
         }
         Ok(result)

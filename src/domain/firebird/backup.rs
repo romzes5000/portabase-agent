@@ -13,20 +13,28 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("info", format!("Starting Firebird backup for database: {}", cfg.name));
+        logger.log(
+            "info",
+            format!("Starting Firebird backup for database: {}", cfg.name),
+        );
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 
-        logger.log("info", format!("Firebird target: {} → {}", db_path, file_path.display()));
-        
+        logger.log(
+            "info",
+            format!("Firebird target: {} → {}", db_path, file_path.display()),
+        );
+
         let start = Instant::now();
         let output = Command::new("gbak")
             .arg("-b")
             .arg("-g")
             .arg("-v")
-            .arg("-user").arg(&cfg.username)
-            .arg("-password").arg(&cfg.password)
+            .arg("-user")
+            .arg(&cfg.username)
+            .arg("-password")
+            .arg(&cfg.password)
             .arg(&db_path)
             .arg(&file_path)
             .output()
@@ -48,7 +56,10 @@ pub async fn run(
         }
 
         logger.log_command("gbak", combined_output, Some(0), Some(duration_ms));
-        logger.log("info", format!("Firebird backup completed for {}", cfg.name));
+        logger.log(
+            "info",
+            format!("Firebird backup completed for {}", cfg.name),
+        );
         Ok(file_path)
     })
     .await?

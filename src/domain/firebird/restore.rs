@@ -8,11 +8,17 @@ use std::time::Instant;
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogger>) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
-        logger.log("debug", format!("Starting Firebird restore for database {}", cfg.name));
+        logger.log(
+            "debug",
+            format!("Starting Firebird restore for database {}", cfg.name),
+        );
 
         let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);
 
-        logger.log("info", format!("Restore source: {}", restore_file.display()));
+        logger.log(
+            "info",
+            format!("Restore source: {}", restore_file.display()),
+        );
         logger.log("info", format!("Restore target: {}", db_path));
 
         let start = Instant::now();
@@ -34,13 +40,33 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            logger.log_command("gbak", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
-            logger.log("error", format!("Firebird restore failed for {}: {}", cfg.name, stderr));
+            logger.log_command(
+                "gbak",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
+            logger.log(
+                "error",
+                format!("Firebird restore failed for {}: {}", cfg.name, stderr),
+            );
             anyhow::bail!("Firebird restore failed for {}: {}", cfg.name, stderr);
         }
 
-        logger.log_command("gbak", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
-        logger.log("info", format!("Firebird restore completed for {}", cfg.name));
+        logger.log_command(
+            "gbak",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
+        logger.log(
+            "info",
+            format!("Firebird restore completed for {}", cfg.name),
+        );
 
         Ok(())
     })

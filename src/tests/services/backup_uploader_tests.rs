@@ -122,10 +122,10 @@ async fn a_failing_upload_is_retried_until_it_succeeds() {
 
     Mock::given(method("POST"))
         .and(path("/tus/files"))
-        .respond_with(
-            ResponseTemplate::new(201)
-                .insert_header("Location", format!("{}/tus/files/upload-1", server.uri()).as_str()),
-        )
+        .respond_with(ResponseTemplate::new(201).insert_header(
+            "Location",
+            format!("{}/tus/files/upload-1", server.uri()).as_str(),
+        ))
         .with_priority(2)
         .expect(1)
         .mount(&server)
@@ -149,7 +149,9 @@ async fn a_failing_upload_is_retried_until_it_succeeds() {
         .await;
 
     let mut backup_file = NamedTempFile::new().unwrap();
-    backup_file.write_all(b"portabase-retry-test-payload").unwrap();
+    backup_file
+        .write_all(b"portabase-retry-test-payload")
+        .unwrap();
     backup_file.flush().unwrap();
 
     let ctx = Context {
@@ -199,7 +201,8 @@ async fn a_failing_upload_is_retried_until_it_succeeds() {
     let entries = Arc::try_unwrap(logger).unwrap().into_entries();
     assert_eq!(entries.iter().filter(|e| e.level == "warn").count(), 2);
     assert!(
-        entries.iter().any(|e| e.message
-            == "Upload to storage storage-1 succeeded on attempt 3/3")
+        entries
+            .iter()
+            .any(|e| e.message == "Upload to storage storage-1 succeeded on attempt 3/3")
     );
 }

@@ -112,11 +112,22 @@ async fn postgres_backup_restore_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let file_path = db
+        .backup(
+            backup_path,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+        .unwrap();
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let compression = compress_to_tar_gz_large(
+        &file_path,
+        std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+    )
+    .await
+    .unwrap();
 
     assert!(compression.compressed_path.is_file());
 
@@ -142,7 +153,13 @@ async fn postgres_backup_restore_test() {
 
     info!("Running pg_restore: {:?}", backup_file);
 
-    match db.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
+    match db
+        .restore(
+            &backup_file,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+    {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)
@@ -270,7 +287,8 @@ async fn prepare_archive_fc_returns_file_path_unchanged() {
 
     let logger = JobLogger::new();
 
-    let prepared = prepare_archive(PostgresDumpFormat::Fc, &backup_path, &pg_restore, &logger).unwrap();
+    let prepared =
+        prepare_archive(PostgresDumpFormat::Fc, &backup_path, &pg_restore, &logger).unwrap();
 
     assert_eq!(prepared.path(), backup_path.as_path());
     assert!(!prepared.toc().is_empty());
@@ -285,7 +303,10 @@ async fn restore_run_unified_fc_roundtrip() {
     let client = crate::domain::postgres::connection::connect(&config)
         .await
         .unwrap();
-    client.execute("CREATE TABLE t(id int);", &[]).await.unwrap();
+    client
+        .execute("CREATE TABLE t(id int);", &[])
+        .await
+        .unwrap();
 
     let temp_dir = TempDir::new().unwrap();
 
@@ -337,29 +358,46 @@ async fn backup_as_non_owner_succeeds_only_with_exclude_tables() {
     ro.password = "x".into();
 
     let mut excluded = ro.clone();
-    excluded
-        .options
-        .insert("exclude_tables".into(), serde_json::json!(["public.search_index__*"]));
+    excluded.options.insert(
+        "exclude_tables".into(),
+        serde_json::json!(["public.search_index__*"]),
+    );
 
     for format in [PostgresDumpFormat::Fc, PostgresDumpFormat::Fd] {
         let dir = TempDir::new().unwrap();
         let denied = crate::domain::postgres::backup::run(
-            ro.clone(), format, dir.path().to_path_buf(), pg_dump_env(&ro), Arc::new(JobLogger::new()),
+            ro.clone(),
+            format,
+            dir.path().to_path_buf(),
+            pg_dump_env(&ro),
+            Arc::new(JobLogger::new()),
         )
         .await;
-        assert!(denied.is_err(), "{format:?}: non-owner dump must fail without exclusions");
+        assert!(
+            denied.is_err(),
+            "{format:?}: non-owner dump must fail without exclusions"
+        );
 
         let dir = TempDir::new().unwrap();
         let logger = Arc::new(JobLogger::new());
         let dump = crate::domain::postgres::backup::run(
-            excluded.clone(), format, dir.path().to_path_buf(), pg_dump_env(&excluded), logger.clone(),
+            excluded.clone(),
+            format,
+            dir.path().to_path_buf(),
+            pg_dump_env(&excluded),
+            logger.clone(),
         )
         .await
         .unwrap_or_else(|e| panic!("{format:?}: dump with exclusions failed: {e:?}"));
 
-        let entries = Arc::try_unwrap(logger).expect("single owner").into_entries();
+        let entries = Arc::try_unwrap(logger)
+            .expect("single owner")
+            .into_entries();
         assert!(entries.iter().any(|e| e.message
-            == format!("Excluding from dump of {}: --exclude-table=public.search_index__*", excluded.name)));
+            == format!(
+                "Excluding from dump of {}: --exclude-table=public.search_index__*",
+                excluded.name
+            )));
 
         if format == PostgresDumpFormat::Fc {
             let version = server_version(&admin).await.unwrap();
@@ -381,7 +419,9 @@ async fn drop_all_schemas_removes_user_schema() {
         .await
         .unwrap();
     client
-        .batch_execute("CREATE SCHEMA IF NOT EXISTS extra_ns; CREATE TABLE IF NOT EXISTS extra_ns.t(id int);")
+        .batch_execute(
+            "CREATE SCHEMA IF NOT EXISTS extra_ns; CREATE TABLE IF NOT EXISTS extra_ns.t(id int);",
+        )
         .await
         .unwrap();
 
@@ -586,9 +626,11 @@ async fn restore_unknown_clean_mode_falls_back() {
     let entries = Arc::try_unwrap(logger)
         .expect("logger should have a single owner after run() completes")
         .into_entries();
-    assert!(entries
-        .iter()
-        .any(|e| e.message.contains("Unknown clean_mode 'wat'")));
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.message.contains("Unknown clean_mode 'wat'"))
+    );
 }
 
 #[tokio::test]
@@ -800,7 +842,11 @@ async fn corrupt_archive_leaves_database_untouched() {
 
     let dir = TempDir::new().unwrap();
     let broken_file = dir.path().join("broken.tar.gz");
-    std::fs::write(&broken_file, [0x1f, 0x8b, 0x08, 0x00, 0xde, 0xad, 0xbe, 0xef]).unwrap();
+    std::fs::write(
+        &broken_file,
+        [0x1f, 0x8b, 0x08, 0x00, 0xde, 0xad, 0xbe, 0xef],
+    )
+    .unwrap();
 
     let result = crate::domain::postgres::restore::run(
         cfg.clone(),
@@ -811,7 +857,10 @@ async fn corrupt_archive_leaves_database_untouched() {
     )
     .await;
 
-    assert!(result.is_err(), "corrupt archive must be rejected before any destructive step");
+    assert!(
+        result.is_err(),
+        "corrupt archive must be rejected before any destructive step"
+    );
 
     let client = crate::domain::postgres::connection::connect(&config)
         .await

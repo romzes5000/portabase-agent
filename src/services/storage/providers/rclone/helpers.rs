@@ -31,7 +31,9 @@ const BLOCKED_BACKEND_TYPES: [&str; 14] = [
 
 fn valid_remote_name(name: &str) -> bool {
     let mut chars = name.chars();
-    chars.next().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '@' | '-'))
 }
 
@@ -43,7 +45,15 @@ fn forbidden_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
     matches!(
         key.as_str(),
-        "ssh" | "env_auth" | "use_msi" | "use_az" | "use_kerberos" | "kerberos_ccache" | "key_use_agent" | "set_env" | "unix_socket"
+        "ssh"
+            | "env_auth"
+            | "use_msi"
+            | "use_az"
+            | "use_kerberos"
+            | "kerberos_ccache"
+            | "key_use_agent"
+            | "set_env"
+            | "unix_socket"
     ) || key.ends_with("_command")
         || key.ends_with("_file")
         || key.ends_with("_path")
@@ -75,7 +85,10 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
         bail!("rclone config line {n} appears before any [section]");
     }
     if names.len() != 1 {
-        bail!("rclone config must contain exactly one [section] (found {})", names.len());
+        bail!(
+            "rclone config must contain exactly one [section] (found {})",
+            names.len()
+        );
     }
     let name = names[0];
     if !valid_remote_name(name) {
@@ -106,7 +119,11 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
         bail!("rclone remote '{name}' has no type");
     };
     let backend = backend.to_ascii_lowercase();
-    if backend.is_empty() || !backend.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == ' ') {
+    if backend.is_empty()
+        || !backend
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == ' ')
+    {
         bail!("invalid rclone backend type '{backend}' (remote '{name}')");
     }
     let compact = backend.replace(' ', "");
@@ -115,7 +132,9 @@ pub fn validate_config(config_text: &str, remote_name: &str) -> Result<()> {
     }
     if compact == "oracleobjectstorage" {
         if !pairs.contains(&("provider", "no_auth")) {
-            bail!("rclone oracleobjectstorage remotes must use provider = no_auth (remote '{name}')");
+            bail!(
+                "rclone oracleobjectstorage remotes must use provider = no_auth (remote '{name}')"
+            );
         }
     }
     if remote_name != name {
@@ -142,7 +161,9 @@ pub fn obscure_password(password: &str) -> Result<String> {
         .write_all(password.as_bytes())
         .context("failed to write the password to rclone obscure")?;
 
-    let out = child.wait_with_output().context("failed to wait for rclone obscure")?;
+    let out = child
+        .wait_with_output()
+        .context("failed to wait for rclone obscure")?;
 
     if !out.status.success() {
         bail!(

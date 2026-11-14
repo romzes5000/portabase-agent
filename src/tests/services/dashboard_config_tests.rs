@@ -1,4 +1,4 @@
-use crate::services::config::{build_config, DatabaseConfig, InputDatabaseConfig};
+use crate::services::config::{DatabaseConfig, InputDatabaseConfig, build_config};
 use crate::services::dashboard_config::merge;
 use crate::services::dashboard_config::{load_cache, persist_cache};
 
@@ -58,7 +58,9 @@ fn cache_roundtrips() {
 
 #[test]
 fn load_cache_missing_file_is_empty() {
-    let loaded = load_cache(std::path::Path::new("/nonexistent/dashboard_databases.json"));
+    let loaded = load_cache(std::path::Path::new(
+        "/nonexistent/dashboard_databases.json",
+    ));
     assert!(loaded.is_empty());
 }
 
@@ -110,7 +112,10 @@ fn payload_method_is_sent_for_local_files_sources_only() {
     let local = files_cfg(ID_A, Some("sync"));
     let ids = local_only_ids(&[local.clone()], &[]);
     assert_eq!(payload_method(&local, &ids), Some("sync"));
-    assert_eq!(payload_method(&files_cfg(ID_A, None), &ids), Some("archive"));
+    assert_eq!(
+        payload_method(&files_cfg(ID_A, None), &ids),
+        Some("archive")
+    );
     // Replaced by a dashboard config: the dashboard owns the method.
     let replaced = local_only_ids(&[local.clone()], &[local.clone()]);
     assert_eq!(payload_method(&local, &replaced), None);

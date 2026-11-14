@@ -3,10 +3,18 @@ use serde_json::{Value, json};
 
 #[derive(Debug, PartialEq)]
 pub enum Line {
-    Status { percent_done: f64 },
+    Status {
+        percent_done: f64,
+    },
     Summary(Value),
-    Error { message: String, item: Option<String> },
-    ExitError { code: i32, message: String },
+    Error {
+        message: String,
+        item: Option<String>,
+    },
+    ExitError {
+        code: i32,
+        message: String,
+    },
     Text(String),
 }
 
@@ -20,7 +28,10 @@ pub fn parse(line: &str) -> Line {
         },
         Some("summary") => Line::Summary(value),
         Some("error") => Line::Error {
-            message: value["error"]["message"].as_str().unwrap_or("unknown error").to_string(),
+            message: value["error"]["message"]
+                .as_str()
+                .unwrap_or("unknown error")
+                .to_string(),
             item: value["item"].as_str().map(str::to_string),
         },
         Some("exit_error") => Line::ExitError {
@@ -69,7 +80,12 @@ pub struct SnapshotSummary {
     pub total_files_processed: u64,
 }
 
-pub fn files_removed(snapshots: &[Snapshot], snapshot_id: &str, changed: u64, unmodified: u64) -> Option<u64> {
+pub fn files_removed(
+    snapshots: &[Snapshot],
+    snapshot_id: &str,
+    changed: u64,
+    unmodified: u64,
+) -> Option<u64> {
     let find = |id: &str| snapshots.iter().find(|s| s.id == id);
     let Some(parent) = find(snapshot_id)?.parent.as_deref() else {
         return Some(0);

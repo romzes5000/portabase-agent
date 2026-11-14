@@ -20,21 +20,39 @@ pub(crate) fn run_pg_restore(
             let stdout = String::from_utf8_lossy(&o.stdout).to_string();
             let combined = format!("{}{}", stdout, stderr);
             let exit_code = o.status.code().unwrap_or(-1);
-            let payload = if combined.is_empty() { None } else { Some(combined) };
+            let payload = if combined.is_empty() {
+                None
+            } else {
+                Some(combined)
+            };
 
             if o.status.success() {
                 logger.log_command("pg_restore", payload, Some(0), Some(duration_ms));
-                logger.log("info", format!("Restore completed successfully for {}", cfg.name));
+                logger.log(
+                    "info",
+                    format!("Restore completed successfully for {}", cfg.name),
+                );
                 Ok(())
             } else {
                 logger.log_command("pg_restore", payload, Some(exit_code), Some(duration_ms));
-                logger.log("error", format!("Restore failed with status {:?} for {}", o.status, cfg.name));
+                logger.log(
+                    "error",
+                    format!("Restore failed with status {:?} for {}", o.status, cfg.name),
+                );
                 anyhow::bail!("Postgres restore failed for {}", cfg.name);
             }
         }
         Err(e) => {
-            logger.log_command("pg_restore", Some(e.to_string()), Some(-1), Some(duration_ms));
-            logger.log("error", format!("Error executing pg_restore for {}: {:?}", cfg.name, e));
+            logger.log_command(
+                "pg_restore",
+                Some(e.to_string()),
+                Some(-1),
+                Some(duration_ms),
+            );
+            logger.log(
+                "error",
+                format!("Error executing pg_restore for {}: {:?}", cfg.name, e),
+            );
             Err(e.into())
         }
     }

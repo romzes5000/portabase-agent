@@ -18,7 +18,9 @@ fn normalized(patterns: &[String]) -> Result<Vec<(bool, String)>> {
     for raw in patterns {
         let pattern = raw.trim();
         if pattern.contains(['{', '}']) {
-            bail!("exclude pattern '{pattern}': brace patterns are not supported in Snapshots mode");
+            bail!(
+                "exclude pattern '{pattern}': brace patterns are not supported in Snapshots mode"
+            );
         }
         let (anchored, rest) = match pattern.strip_prefix('/') {
             Some(rest) => (true, rest),
@@ -37,7 +39,11 @@ pub fn backup_excludes(root: &Path, patterns: &[String]) -> Result<Vec<String>> 
     Ok(normalized(patterns)?
         .into_iter()
         .map(|(anchored, p)| {
-            if anchored { format!("{root}/{p}") } else { format!("{root}/**/{p}") }
+            if anchored {
+                format!("{root}/{p}")
+            } else {
+                format!("{root}/**/{p}")
+            }
         })
         .collect())
 }
@@ -45,6 +51,12 @@ pub fn backup_excludes(root: &Path, patterns: &[String]) -> Result<Vec<String>> 
 pub fn restore_excludes(patterns: &[String]) -> Result<Vec<String>> {
     Ok(normalized(patterns)?
         .into_iter()
-        .map(|(anchored, p)| if anchored { format!("/{p}") } else { format!("/**/{p}") })
+        .map(|(anchored, p)| {
+            if anchored {
+                format!("/{p}")
+            } else {
+                format!("/**/{p}")
+            }
+        })
         .collect())
 }

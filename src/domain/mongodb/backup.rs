@@ -14,7 +14,10 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("info", format!("Starting MongoDB backup for database {}", cfg.name));
+        logger.log(
+            "info",
+            format!("Starting MongoDB backup for database {}", cfg.name),
+        );
 
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let mongodump = select_mongo_path().join("mongodump");
@@ -24,14 +27,30 @@ pub async fn run(
             &cfg,
             &[
                 ("exclude_collections", "--excludeCollection"),
-                ("exclude_collections_with_prefix", "--excludeCollectionsWithPrefix"),
+                (
+                    "exclude_collections_with_prefix",
+                    "--excludeCollectionsWithPrefix",
+                ),
             ],
         );
         for key in invalid {
-            logger.log("warn", format!("Ignoring options.{} for {}: expected a list of strings", key, cfg.name));
+            logger.log(
+                "warn",
+                format!(
+                    "Ignoring options.{} for {}: expected a list of strings",
+                    key, cfg.name
+                ),
+            );
         }
         if !excludes.is_empty() {
-            logger.log("info", format!("Excluding from dump of {}: {}", cfg.name, excludes.join(" ")));
+            logger.log(
+                "info",
+                format!(
+                    "Excluding from dump of {}: {}",
+                    cfg.name,
+                    excludes.join(" ")
+                ),
+            );
         }
 
         logger.log("info", format!("Running mongodump for {}", cfg.name));
@@ -51,12 +70,29 @@ pub async fn run(
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            logger.log("error", format!("MongoDB backup failed for {}: {}", cfg.name, stderr));
-            logger.log_command("mongodump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log(
+                "error",
+                format!("MongoDB backup failed for {}: {}", cfg.name, stderr),
+            );
+            logger.log_command(
+                "mongodump",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
             anyhow::bail!("MongoDB backup failed for {}: {}", cfg.name, stderr);
         }
 
-        logger.log_command("mongodump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command(
+            "mongodump",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
         logger.log("info", format!("MongoDB backup completed for {}", cfg.name));
         Ok(file_path)
     })

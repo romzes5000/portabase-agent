@@ -16,7 +16,13 @@ pub async fn run(
 ) -> Result<PathBuf> {
     let (format, unknown_format) = MssqlFormat::from_config(&cfg);
     if let Some(v) = unknown_format {
-        logger.log("warn", format!("Unknown backup_format '{}' for {}, falling back to 'dacpac'", v, cfg.name));
+        logger.log(
+            "warn",
+            format!(
+                "Unknown backup_format '{}' for {}, falling back to 'dacpac'",
+                v, cfg.name
+            ),
+        );
     }
 
     let sqlpackage_args: &'static [&'static str] = match format {

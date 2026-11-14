@@ -58,7 +58,10 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
 
             tokio::spawn(async move {
                 // Never log metadata: it carries decrypted storage channels (secrets).
-                info!("Executing task={} args={:?}", task_clone.task, task_clone.args);
+                info!(
+                    "Executing task={} args={:?}",
+                    task_clone.task, task_clone.args
+                );
                 if let Err(e) = execute_task(
                     task_clone.task.as_str(),
                     task_clone.args,
@@ -98,7 +101,8 @@ pub async fn scheduler_loop(mut conn: MultiplexedConnection) {
 /// Local config merged with the dashboard-pushed sources, as the agent loop sees them.
 fn merged_config(ctx: &Arc<Context>) -> crate::services::config::DatabasesConfig {
     let local = ConfigService::new(ctx.clone()).load_optional(None);
-    let cache_path = std::path::PathBuf::from(&crate::settings::CONFIG.data_path).join("dashboard_databases.json");
+    let cache_path = std::path::PathBuf::from(&crate::settings::CONFIG.data_path)
+        .join("dashboard_databases.json");
     let dashboard = crate::services::dashboard_config::load_cache(&cache_path);
     crate::services::dashboard_config::merge(&local.databases, &dashboard)
 }
@@ -139,7 +143,10 @@ pub async fn execute_task(
             let storages: Vec<DatabaseStorage> = serde_json::from_value(storages_value.clone())?;
             let encrypt: bool = serde_json::from_value(encrypt_value.clone())?;
             // Tasks stored before P2 have no engine: archive.
-            let engine = metadata_obj.get("engine").and_then(Value::as_str).unwrap_or("archive");
+            let engine = metadata_obj
+                .get("engine")
+                .and_then(Value::as_str)
+                .unwrap_or("archive");
 
             backup_service
                 .dispatch(

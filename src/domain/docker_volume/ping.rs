@@ -6,7 +6,9 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let docker = client()?;
     match docker.inspect_volume(&cfg.volume_name).await {
         Ok(_) => Ok(true),
-        Err(bollard::errors::Error::DockerResponseServerError { status_code: 404, .. }) => Ok(false),
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 404, ..
+        }) => Ok(false),
         Err(e) => Err(e.into()),
     }
 }

@@ -5,7 +5,9 @@ use crate::core::context::Context;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::models::{BackupResult, UploadResult};
 use crate::services::storage::StorageProvider;
-use crate::services::storage::providers::azure_blob::helpers::{BLOCK_SIZE, upload_stream_to_azure};
+use crate::services::storage::providers::azure_blob::helpers::{
+    BLOCK_SIZE, upload_stream_to_azure,
+};
 use crate::services::storage::providers::azure_blob::models::AzureBlobProviderConfig;
 use crate::utils::common::BackupMethod;
 use crate::utils::file::{full_file_name, full_file_path};

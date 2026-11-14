@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use bollard::Docker;
 use bollard::models::{ContainerCreateBody, HostConfig};
 use bollard::query_parameters::{
-    CreateContainerOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+    CreateContainerOptions, InspectContainerOptions, ListContainersOptions, RemoveContainerOptions,
+    StartContainerOptions, StopContainerOptions,
 };
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -136,7 +136,6 @@ pub async fn create_helper(
 
     Ok(Helper { id: res.id })
 }
-
 
 pub async fn remove_helper(docker: &Docker, id: &str) {
     let stop_opts = StopContainerOptions {

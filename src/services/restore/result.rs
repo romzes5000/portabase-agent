@@ -3,8 +3,8 @@ use super::service::RestoreService;
 use crate::services::api::ApiError;
 use crate::services::api::models::agent::restore::ResultRestoreResponse;
 
-use tracing::{error, info};
 use crate::services::backup::logger::JobLogEntry;
+use tracing::{error, info};
 
 impl RestoreService {
     pub async fn send_result(
@@ -15,9 +15,7 @@ impl RestoreService {
     ) -> Result<Option<ResultRestoreResponse>, ApiError> {
         info!(
             "[RestoreService] DB: {} | Status: {} | Duration: {}ms",
-            result.generated_id,
-            result.status,
-            duration_ms
+            result.generated_id, result.status, duration_ms
         );
 
         self.ctx
@@ -27,7 +25,7 @@ impl RestoreService {
                 &result.generated_id,
                 &result.status,
                 logs,
-                duration_ms
+                duration_ms,
             )
             .await
             .map_err(|e| {

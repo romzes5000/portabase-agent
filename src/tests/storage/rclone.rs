@@ -62,7 +62,10 @@ fn build_rclone_config_skips_empty_and_rejects_line_breaks() {
 fn max_connections_reads_the_rclone_sftp_cap() {
     use crate::services::storage::providers::rclone::helpers::max_connections;
 
-    assert_eq!(max_connections("[sftp]\ntype = sftp\nconnections = 3\n"), Some(3));
+    assert_eq!(
+        max_connections("[sftp]\ntype = sftp\nconnections = 3\n"),
+        Some(3)
+    );
     assert_eq!(max_connections("[sftp]\ntype = sftp\n"), None);
     assert_eq!(max_connections("[sftp]\nconnections = 0\n"), None); // rclone: 0 = unlimited
     assert_eq!(max_connections("[sftp]\nconnections = many\n"), None);
@@ -91,27 +94,44 @@ fn validate_config_matches_the_shared_test_vectors() {
 
     let mut failures = Vec::new();
     for case in &cases {
-        match (validate_config(&case.config_text, &case.remote_name), case.ok) {
+        match (
+            validate_config(&case.config_text, &case.remote_name),
+            case.ok,
+        ) {
             (Ok(()), true) => {}
             (Ok(()), false) => failures.push(format!("[{}] expected an error, got Ok", case.name)),
             (Err(e), true) => failures.push(format!("[{}] expected Ok, got: {e:#}", case.name)),
             (Err(e), false) => {
                 let msg = format!("{e:#}");
-                let want = case.error_contains.as_deref().expect("ok:false needs errorContains");
+                let want = case
+                    .error_contains
+                    .as_deref()
+                    .expect("ok:false needs errorContains");
                 if !msg.contains(want) {
-                    failures.push(format!("[{}] error {msg:?} does not contain {want:?}", case.name));
+                    failures.push(format!(
+                        "[{}] error {msg:?} does not contain {want:?}",
+                        case.name
+                    ));
                 }
             }
         }
     }
-    assert!(failures.is_empty(), "{} case(s) failed:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} case(s) failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
 fn validate_config_rejects_an_unknown_remote_name() {
     let err = validate_config(OVH_CONFIG, "typo").unwrap_err().to_string();
     assert!(err.contains("typo"), "unexpected error: {err}");
-    assert!(err.contains("ovhcloud-rbx"), "error should list the available remotes: {err}");
+    assert!(
+        err.contains("ovhcloud-rbx"),
+        "error should list the available remotes: {err}"
+    );
 }
 
 #[test]
@@ -134,15 +154,24 @@ fn validate_config_rejects_chained_sections() {
     // anything beyond a single [section] is refused outright.
     let cfg = "[secret]\ntype = crypt\nremote = disk:vault\n\n[disk]\ntype = local\n";
     let err = validate_config(cfg, "secret").unwrap_err().to_string();
-    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
+    assert!(
+        err.contains("exactly one [section] (found 2)"),
+        "unexpected error: {err}"
+    );
 
     let cfg = "[outer]\ntype = s3\nprovider = Minio\n\n[disk]\ntype = local\n";
     let err = validate_config(cfg, "outer").unwrap_err().to_string();
-    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
+    assert!(
+        err.contains("exactly one [section] (found 2)"),
+        "unexpected error: {err}"
+    );
 
     let cfg = format!("[secret]\ntype = crypt\nremote = ovhcloud-rbx:bucket\n\n{OVH_CONFIG}");
     let err = validate_config(&cfg, "secret").unwrap_err().to_string();
-    assert!(err.contains("exactly one [section] (found 2)"), "unexpected error: {err}");
+    assert!(
+        err.contains("exactly one [section] (found 2)"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -150,16 +179,17 @@ fn validate_config_rejects_crypt_over_an_allowed_remote_name() {
     let cfg = "[secret]\ntype = crypt\nremote = ovhcloud-rbx:bucket\n";
     let err = validate_config(cfg, "secret").unwrap_err().to_string();
     assert!(err.contains("crypt"), "unexpected error: {err}");
-    assert!(err.contains("secret"), "error should name the offending remote: {err}");
+    assert!(
+        err.contains("secret"),
+        "error should name the offending remote: {err}"
+    );
 }
 
 #[test]
 fn validate_config_rejects_a_wrapping_backend_pointing_at_a_bare_local_path() {
     for backend in ["crypt", "chunker", "compress", "union", "combine", "hasher"] {
         let cfg = format!("[sneaky]\ntype = {backend}\nremote = /etc\n");
-        let err = validate_config(&cfg, "sneaky")
-            .unwrap_err()
-            .to_string();
+        let err = validate_config(&cfg, "sneaky").unwrap_err().to_string();
         assert!(err.contains(backend), "{backend} must be rejected: {err}");
     }
 }
@@ -181,7 +211,11 @@ fn remote_path_is_a_prefix_ahead_of_the_backup_folder() {
     );
 
     assert_eq!(
-        remote_target("ovhcloud-rbx", "my-bucket/portabase", "backups/2026-09-09/x.tar.gz"),
+        remote_target(
+            "ovhcloud-rbx",
+            "my-bucket/portabase",
+            "backups/2026-09-09/x.tar.gz"
+        ),
         "ovhcloud-rbx:my-bucket/portabase/backups/2026-09-09/x.tar.gz"
     );
 }
@@ -280,7 +314,11 @@ fn write_config_creates_an_owner_only_file_with_the_exact_text() {
     let file = write_config(OVH_CONFIG).unwrap();
 
     let mode = std::fs::metadata(file.path()).unwrap().permissions().mode();
-    assert_eq!(mode & 0o777, 0o600, "config file must not be group/world readable");
+    assert_eq!(
+        mode & 0o777,
+        0o600,
+        "config file must not be group/world readable"
+    );
 
     assert_eq!(std::fs::read_to_string(file.path()).unwrap(), OVH_CONFIG);
 }
@@ -316,8 +354,7 @@ async fn rcat_reports_rclone_stderr_when_the_remote_is_unreachable() {
 
     let config = write_config(&minio_config("http://127.0.0.1:1")).unwrap();
 
-    let chunks: Vec<Result<Bytes, std::io::Error>> =
-        vec![Ok(Bytes::from_static(&[0u8; 4096]))];
+    let chunks: Vec<Result<Bytes, std::io::Error>> = vec![Ok(Bytes::from_static(&[0u8; 4096]))];
 
     let err = rcat(
         config.path(),
@@ -458,7 +495,9 @@ async fn provider_uploads_an_unencrypted_backup_to_minio() {
     assert!(result.success, "upload failed: {:?}", result.error);
     assert_eq!(result.total_size, Some(payload.len() as u64));
 
-    let remote_file_path = result.remote_file_path.expect("remote path must be reported");
+    let remote_file_path = result
+        .remote_file_path
+        .expect("remote path must be reported");
     assert!(
         remote_file_path.starts_with("backups/"),
         "folder_name must prefix the path: {remote_file_path}"

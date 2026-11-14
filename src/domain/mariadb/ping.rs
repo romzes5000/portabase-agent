@@ -25,5 +25,3 @@ pub async fn run(cfg: DatabaseConfig, env: HashMap<String, String>) -> anyhow::R
         Err(_) => Ok(false),
     }
 }
-
-

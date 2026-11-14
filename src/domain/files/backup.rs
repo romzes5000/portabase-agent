@@ -94,7 +94,6 @@ fn archive(cfg: &DatabaseConfig, backup_dir: &Path, logger: &JobLogger) -> Resul
                 .with_context(|| format!("failed to archive {}", rel.display()))?;
             files += 1;
         } else if ft.is_dir() || ft.is_symlink() {
-
             if let Err(e) = tar.append_path_with_name(entry.path(), &rel) {
                 logger.log("warn", format!("Skipping {}: {e}", rel.display()));
                 unreadable += 1;

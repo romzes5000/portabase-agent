@@ -12,7 +12,11 @@ use std::sync::Arc;
 use tracing::error;
 
 impl BackupService {
-    pub async fn run(cfg: DatabaseConfig, tmp_path: &Path, logger: Arc<JobLogger>) -> Result<BackupResult> {
+    pub async fn run(
+        cfg: DatabaseConfig,
+        tmp_path: &Path,
+        logger: Arc<JobLogger>,
+    ) -> Result<BackupResult> {
         let db = DatabaseFactory::create_for_backup(cfg.clone()).await;
 
         let generated_id = cfg.generated_id.clone();

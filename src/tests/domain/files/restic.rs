@@ -1,9 +1,9 @@
-use crate::services::api::models::agent::status::DatabaseStorage;
-use crate::services::backup::logger::JobLogger;
-use crate::domain::files::restic::repo::is_snapshot_id;
 use crate::domain::files::restic::excludes::{backup_excludes, glob_escape, restore_excludes};
 use crate::domain::files::restic::json::{self, BackupSummary, Line};
 use crate::domain::files::restic::password::derive_password;
+use crate::domain::files::restic::repo::is_snapshot_id;
+use crate::services::api::models::agent::status::DatabaseStorage;
+use crate::services::backup::logger::JobLogger;
 use crate::tests::domain::files::files_config;
 use crate::utils::edge_key::hkdf_sha256_32;
 use serde_json::json;
@@ -16,7 +16,13 @@ fn strings(items: &[&str]) -> Vec<String> {
 #[test]
 fn snapshot_ids_are_full_lowercase_hex() {
     assert!(is_snapshot_id(&"a1".repeat(32)));
-    for bad in ["--password-command=touch /tmp/pwned", &"A".repeat(64), &"a".repeat(63), &"a".repeat(65), ""] {
+    for bad in [
+        "--password-command=touch /tmp/pwned",
+        &"A".repeat(64),
+        &"a".repeat(63),
+        &"a".repeat(65),
+        "",
+    ] {
         assert!(!is_snapshot_id(bad), "{bad}");
     }
 }
@@ -52,7 +58,14 @@ fn password_rejects_a_non_base64_master_key() {
 fn backup_excludes_are_rooted_at_the_source() {
     let got = backup_excludes(
         Path::new("/data/files"),
-        &strings(&["*.log", "node_modules/", "/build/", "/docs/**/*.md", "  ", "/"]),
+        &strings(&[
+            "*.log",
+            "node_modules/",
+            "/build/",
+            "/docs/**/*.md",
+            "  ",
+            "/",
+        ]),
     )
     .unwrap();
     assert_eq!(
@@ -81,17 +94,32 @@ fn restore_excludes_are_relative_to_the_snapshot_subfolder() {
 #[test]
 fn bracket_negation_is_rewritten_for_restic() {
     assert_eq!(
-        backup_excludes(Path::new("/data"), &strings(&["[!a]*.log", "/x/[!0-9]", r"\[!a]", "[a[!]"])).unwrap(),
-        strings(&["/data/**/[^a]*.log", "/data/x/[^0-9]", r"/data/**/\[!a]", "/data/**/[a[!]"])
+        backup_excludes(
+            Path::new("/data"),
+            &strings(&["[!a]*.log", "/x/[!0-9]", r"\[!a]", "[a[!]"])
+        )
+        .unwrap(),
+        strings(&[
+            "/data/**/[^a]*.log",
+            "/data/x/[^0-9]",
+            r"/data/**/\[!a]",
+            "/data/**/[a[!]"
+        ])
     );
-    assert_eq!(restore_excludes(&strings(&["/[!a]*", "[!a]"])).unwrap(), strings(&["/[^a]*", "/**/[^a]"]));
+    assert_eq!(
+        restore_excludes(&strings(&["/[!a]*", "[!a]"])).unwrap(),
+        strings(&["/[^a]*", "/**/[^a]"])
+    );
 }
 
 #[test]
 fn brace_patterns_are_rejected_on_both_sides() {
     let patterns = strings(&["{x,y}.dat"]);
     let err = backup_excludes(Path::new("/data"), &patterns).unwrap_err();
-    assert!(err.to_string().contains("brace patterns are not supported in Snapshots mode"));
+    assert!(
+        err.to_string()
+            .contains("brace patterns are not supported in Snapshots mode")
+    );
     assert!(restore_excludes(&patterns).is_err());
 }
 
@@ -106,23 +134,39 @@ fn json_lines_are_classified() {
     let error = r#"{"message_type":"error","error":{"message":"open /src/u: permission denied"},"during":"archival","item":"/src/u"}"#;
     let exit = r#"{"message_type":"exit_error","code":3,"message":"Warning: at least one source file could not be read"}"#;
 
-    assert_eq!(json::parse(status), Line::Status { percent_done: 0.9999997777778272 });
+    assert_eq!(
+        json::parse(status),
+        Line::Status {
+            percent_done: 0.9999997777778272
+        }
+    );
     assert_eq!(
         json::parse(error),
-        Line::Error { message: "open /src/u: permission denied".into(), item: Some("/src/u".into()) }
+        Line::Error {
+            message: "open /src/u: permission denied".into(),
+            item: Some("/src/u".into())
+        }
     );
     assert_eq!(
         json::parse(exit),
-        Line::ExitError { code: 3, message: "Warning: at least one source file could not be read".into() }
+        Line::ExitError {
+            code: 3,
+            message: "Warning: at least one source file could not be read".into()
+        }
     );
-    assert_eq!(json::parse("Fatal: wrong password"), Line::Text("Fatal: wrong password".into()));
+    assert_eq!(
+        json::parse("Fatal: wrong password"),
+        Line::Text("Fatal: wrong password".into())
+    );
     assert_eq!(json::parse("[]"), Line::Text("[]".into()));
 }
 
 #[test]
 fn backup_summary_deserializes_from_a_recorded_line() {
     let line = r#"{"message_type":"summary","files_new":3,"files_changed":0,"files_unmodified":0,"dirs_new":9,"dirs_changed":0,"dirs_unmodified":0,"data_blobs":8,"tree_blobs":10,"data_added":9005859,"data_added_packed":9004808,"total_files_processed":3,"total_bytes_processed":9000000,"total_duration":0.78928,"backup_start":"2026-10-03T16:59:06.569467+02:00","backup_end":"2026-10-03T16:59:07.359124+02:00","snapshot_id":"05ba7db8d08e4e097b869dbc511a8b8936298b2fcb01b221115789491204a470"}"#;
-    let Line::Summary(value) = json::parse(line) else { panic!("not a summary") };
+    let Line::Summary(value) = json::parse(line) else {
+        panic!("not a summary")
+    };
     let summary: BackupSummary = serde_json::from_value(value).unwrap();
     assert_eq!(summary.snapshot_id.len(), 64);
     assert_eq!(summary.data_added_packed, 9004808);
@@ -143,8 +187,16 @@ fn removed_files_come_from_the_parent_summary() {
     .unwrap();
     assert_eq!(files_removed(&listing, "c", 0, 2), Some(1));
     assert_eq!(files_removed(&listing, "p", 0, 0), Some(0), "no parent");
-    assert_eq!(files_removed(&listing, "orphan", 0, 2), None, "parent not listed");
-    assert_eq!(files_removed(&listing, "child-of-old", 0, 2), None, "parent without summary");
+    assert_eq!(
+        files_removed(&listing, "orphan", 0, 2),
+        None,
+        "parent not listed"
+    );
+    assert_eq!(
+        files_removed(&listing, "child-of-old", 0, 2),
+        None,
+        "parent without summary"
+    );
     assert_eq!(files_removed(&listing, "missing", 0, 2), None);
 }
 
@@ -152,14 +204,18 @@ fn removed_files_come_from_the_parent_summary() {
 fn a_local_channel_opens_the_dashboard_rest_repository() {
     use crate::utils::edge_key::EdgeKey;
     let storage: DatabaseStorage =
-        serde_json::from_value(json!({ "id": "storage-1", "provider": "local", "config": {} })).unwrap();
+        serde_json::from_value(json!({ "id": "storage-1", "provider": "local", "config": {} }))
+            .unwrap();
     let edge_key = EdgeKey {
         server_url: "http://dash:8887/".into(),
         agent_id: "agent-1".into(),
         master_key_b64: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=".into(),
     };
     let repo = ResticRepo::open(&storage, "g1", &edge_key).unwrap();
-    assert_eq!(repo.repository(), "rest:http://dash:8887/storage/restic/g1/");
+    assert_eq!(
+        repo.repository(),
+        "rest:http://dash:8887/storage/restic/g1/"
+    );
     assert!(repo.is_append_only());
 }
 
@@ -173,7 +229,16 @@ use tempfile::TempDir;
 fn local_repo(dir: &Path, generated_id: &str) -> ResticRepo {
     fs::create_dir_all(dir).unwrap();
     let config = format!("[pb]\ntype = alias\nremote = {}\n", dir.display());
-    ResticRepo::new(&config, "pb", "", "backups", generated_id, "test-password", dir.join("cache")).unwrap()
+    ResticRepo::new(
+        &config,
+        "pb",
+        "",
+        "backups",
+        generated_id,
+        "test-password",
+        dir.join("cache"),
+    )
+    .unwrap()
 }
 
 fn tree(root: &Path) {
@@ -205,14 +270,35 @@ async fn an_rclone_connection_cap_limits_restic_requests() {
     let base = TempDir::new().unwrap();
     let dir = base.path().join("repo");
     fs::create_dir_all(&dir).unwrap();
-    let config = format!("[pb]\ntype = alias\nremote = {}\nconnections = 2\n", dir.display());
-    let repo = ResticRepo::new(&config, "pb", "", "backups", "g1", "test-password", dir.join("cache")).unwrap();
+    let config = format!(
+        "[pb]\ntype = alias\nremote = {}\nconnections = 2\n",
+        dir.display()
+    );
+    let repo = ResticRepo::new(
+        &config,
+        "pb",
+        "",
+        "backups",
+        "g1",
+        "test-password",
+        dir.join("cache"),
+    )
+    .unwrap();
     let logger = JobLogger::new();
 
     let run = repo.run(["cat", "config"], &logger).await.unwrap();
     assert_eq!(run.code, 10, "{}", run.stderr_tail);
-    let logged: Vec<String> = logger.into_entries().into_iter().map(|e| e.message).collect();
-    assert!(logged.iter().any(|m| m.ends_with("-o rclone.connections=2")), "{logged:?}");
+    let logged: Vec<String> = logger
+        .into_entries()
+        .into_iter()
+        .map(|e| e.message)
+        .collect();
+    assert!(
+        logged
+            .iter()
+            .any(|m| m.ends_with("-o rclone.connections=2")),
+        "{logged:?}"
+    );
 }
 
 #[tokio::test]
@@ -228,7 +314,13 @@ async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_par
     assert_eq!(first.snapshot_id.len(), 64);
     assert_eq!(first.files_new, 4);
     assert_eq!(first.files_removed, Some(0));
-    assert!(base.path().join("repo/backups/restic").join(&cfg.generated_id).join("config").exists());
+    assert!(
+        base.path()
+            .join("repo/backups/restic")
+            .join(&cfg.generated_id)
+            .join("config")
+            .exists()
+    );
 
     fs::write(src.path().join("docs/a.txt"), "v2").unwrap();
     let second = snapshot(&repo, &cfg, "bs-2", &logger).await.unwrap();
@@ -236,7 +328,10 @@ async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_par
     assert_eq!(second.files_unmodified, 3);
     assert_eq!(second.files_removed, Some(0));
 
-    let tagged = repo.run(["snapshots", "--json", "--tag", "bs:bs-2"], &logger).await.unwrap();
+    let tagged = repo
+        .run(["snapshots", "--json", "--tag", "bs:bs-2"], &logger)
+        .await
+        .unwrap();
     let listed: serde_json::Value = serde_json::from_str(tagged.stdout.trim()).unwrap();
     let listed = listed.as_array().unwrap();
     assert_eq!(listed.len(), 1, "{}", tagged.stdout);
@@ -245,7 +340,10 @@ async fn first_snapshot_initializes_the_repository_and_the_second_reuses_its_par
 
     fs::remove_file(src.path().join("docs/b.txt")).unwrap();
     let third = snapshot(&repo, &cfg, "bs-3", &logger).await.unwrap();
-    assert_eq!((third.files_new, third.files_changed, third.files_unmodified), (0, 0, 3));
+    assert_eq!(
+        (third.files_new, third.files_changed, third.files_unmodified),
+        (0, 0, 3)
+    );
     assert_eq!(third.files_removed, Some(1));
     assert_eq!(third.report()["filesRemoved"], 1);
 }
@@ -266,7 +364,9 @@ async fn restore_is_a_mirror_that_keeps_excluded_paths() {
     fs::write(src.path().join("docs/new.log"), "kept").unwrap();
     fs::write(src.path().join("build/new.bin"), "kept").unwrap();
 
-    restore(&repo, &cfg, &snap.snapshot_id, &logger).await.unwrap();
+    restore(&repo, &cfg, &snap.snapshot_id, &logger)
+        .await
+        .unwrap();
 
     assert_eq!(
         files(src.path()),
@@ -314,7 +414,9 @@ async fn unanchored_exclude_never_matches_directories_above_the_source() {
     let cfg = files_config(&src, &["tmp"]);
     let repo = local_repo(&base.path().join("repo"), &cfg.generated_id);
 
-    let snap = snapshot(&repo, &cfg, "bs-1", &JobLogger::new()).await.unwrap();
+    let snap = snapshot(&repo, &cfg, "bs-1", &JobLogger::new())
+        .await
+        .unwrap();
     assert_eq!(snap.files_new, 1);
 }
 
@@ -330,7 +432,9 @@ async fn restoring_an_unknown_snapshot_fails_without_touching_the_target() {
     fs::write(src.path().join("new.txt"), "new").unwrap();
     let before = files(src.path());
 
-    let err = restore(&repo, &cfg, &"deadbeef".repeat(8), &logger).await.unwrap_err();
+    let err = restore(&repo, &cfg, &"deadbeef".repeat(8), &logger)
+        .await
+        .unwrap_err();
 
     assert!(err.to_string().contains("not found"), "{err:#}");
     assert_eq!(files(src.path()), before);
@@ -343,12 +447,33 @@ async fn wrong_password_is_reported_explicitly() {
     tree(src.path());
     let cfg = files_config(src.path(), &[]);
     let dir = base.path().join("repo");
-    snapshot(&local_repo(&dir, &cfg.generated_id), &cfg, "bs-1", &JobLogger::new()).await.unwrap();
+    snapshot(
+        &local_repo(&dir, &cfg.generated_id),
+        &cfg,
+        "bs-1",
+        &JobLogger::new(),
+    )
+    .await
+    .unwrap();
 
     let config = format!("[pb]\ntype = alias\nremote = {}\n", dir.display());
-    let other = ResticRepo::new(&config, "pb", "", "backups", &cfg.generated_id, "other", dir.join("cache")).unwrap();
-    let err = snapshot(&other, &cfg, "bs-2", &JobLogger::new()).await.unwrap_err();
-    assert!(err.to_string().contains("wrong repository password"), "{err:#}");
+    let other = ResticRepo::new(
+        &config,
+        "pb",
+        "",
+        "backups",
+        &cfg.generated_id,
+        "other",
+        dir.join("cache"),
+    )
+    .unwrap();
+    let err = snapshot(&other, &cfg, "bs-2", &JobLogger::new())
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("wrong repository password"),
+        "{err:#}"
+    );
 }
 
 #[tokio::test]
@@ -361,6 +486,17 @@ async fn an_unusable_cache_dir_runs_restic_without_cache() {
     fs::create_dir_all(&dir).unwrap();
     let blocker = tempfile::NamedTempFile::new().unwrap();
     let config = format!("[pb]\ntype = alias\nremote = {}\n", dir.display());
-    let repo = ResticRepo::new(&config, "pb", "", "backups", &cfg.generated_id, "test-password", blocker.path().join("cache")).unwrap();
-    snapshot(&repo, &cfg, "bs-1", &JobLogger::new()).await.unwrap();
+    let repo = ResticRepo::new(
+        &config,
+        "pb",
+        "",
+        "backups",
+        &cfg.generated_id,
+        "test-password",
+        blocker.path().join("cache"),
+    )
+    .unwrap();
+    snapshot(&repo, &cfg, "bs-1", &JobLogger::new())
+        .await
+        .unwrap();
 }

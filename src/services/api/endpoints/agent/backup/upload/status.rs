@@ -73,6 +73,7 @@ impl ApiClient {
         body: &StatusUploadRequest,
     ) -> Result<Option<BackupUploadResponse>, ApiError> {
         let path = format!("/agent/{}/backup/upload/status", agent_id);
-        self.request_with_body(Method::PATCH, path.as_str(), body).await
+        self.request_with_body(Method::PATCH, path.as_str(), body)
+            .await
     }
 }

@@ -1,13 +1,13 @@
-use anyhow::Result;
-use async_trait::async_trait;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use super::{backup, format::PostgresDumpFormat, ping, restore};
 use crate::domain::factory::Database;
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 use crate::utils::locks::{DbOpLock, FileLock};
+use anyhow::Result;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub struct PostgresDatabase {
     pub cfg: DatabaseConfig,

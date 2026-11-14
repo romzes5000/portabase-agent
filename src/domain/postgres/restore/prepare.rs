@@ -29,7 +29,13 @@ pub(crate) fn prepare_archive(
 ) -> Result<PreparedArchive> {
     let sniffed = sniff_format(restore_file)?;
     if sniffed != format {
-        logger.log("warn", format!("Declared format {:?} != sniffed {:?}; using sniffed", format, sniffed));
+        logger.log(
+            "warn",
+            format!(
+                "Declared format {:?} != sniffed {:?}; using sniffed",
+                format, sniffed
+            ),
+        );
     }
     let format = sniffed;
 
@@ -63,5 +69,9 @@ pub(crate) fn prepare_archive(
     }
     let toc = String::from_utf8_lossy(&toc_out.stdout).to_string();
 
-    Ok(PreparedArchive { path, _tmp: tmp, toc })
+    Ok(PreparedArchive {
+        path,
+        _tmp: tmp,
+        toc,
+    })
 }

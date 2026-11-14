@@ -4,7 +4,9 @@ use crate::core::context::Context;
 use crate::services::backup::BackupService;
 use crate::services::config::{ConfigService, DatabaseConfig};
 use crate::services::cron::CronService;
-use crate::services::dashboard_config::{collect_configs, load_cache, local_only_ids, merge, persist_cache};
+use crate::services::dashboard_config::{
+    collect_configs, load_cache, local_only_ids, merge, persist_cache,
+};
 use crate::services::restore::RestoreService;
 use crate::services::status::StatusService;
 use crate::settings::CONFIG;
@@ -54,7 +56,10 @@ impl Agent {
         let local_ids = local_only_ids(&local.databases, &self.dashboard_cache);
 
         let merged_in = merge(&local.databases, &self.dashboard_cache);
-        let ping_result = self.status_service.ping(&merged_in.databases, &local_ids).await?;
+        let ping_result = self
+            .status_service
+            .ping(&merged_in.databases, &local_ids)
+            .await?;
 
         self.dashboard_cache = collect_configs(&ping_result);
         if let Err(e) = persist_cache(&self.cache_path, &self.dashboard_cache) {
@@ -76,7 +81,10 @@ impl Agent {
                 .iter()
                 .find(|cfg_db| cfg_db.generated_id == db.generated_id)
             else {
-                warn!("No config for returned database {}; skipping", db.generated_id);
+                warn!(
+                    "No config for returned database {}; skipping",
+                    db.generated_id
+                );
                 continue;
             };
             info!(

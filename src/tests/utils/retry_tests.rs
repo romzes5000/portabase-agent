@@ -79,8 +79,16 @@ async fn retries_until_success_and_logs_each_attempt() {
 
     let warns: Vec<_> = entries.iter().filter(|e| e.level == "warn").collect();
     assert_eq!(warns.len(), 2);
-    assert!(warns[0].message.starts_with("Test op attempt 1/3 failed: boom 1"));
-    assert!(warns[1].message.starts_with("Test op attempt 2/3 failed: boom 2"));
+    assert!(
+        warns[0]
+            .message
+            .starts_with("Test op attempt 1/3 failed: boom 1")
+    );
+    assert!(
+        warns[1]
+            .message
+            .starts_with("Test op attempt 2/3 failed: boom 2")
+    );
 
     let infos: Vec<_> = entries.iter().filter(|e| e.level == "info").collect();
     assert_eq!(infos.len(), 1);
@@ -93,12 +101,11 @@ async fn exhausts_attempts_and_logs_no_terminal_error() {
     let logger = JobLogger::new();
     let calls = AtomicU32::new(0);
 
-    let result: Result<(), anyhow::Error> =
-        retry("Test op", &logger, &fast_policy(3), |_| async {
-            calls.fetch_add(1, Ordering::SeqCst);
-            Err(anyhow::anyhow!("always"))
-        })
-        .await;
+    let result: Result<(), anyhow::Error> = retry("Test op", &logger, &fast_policy(3), |_| async {
+        calls.fetch_add(1, Ordering::SeqCst);
+        Err(anyhow::anyhow!("always"))
+    })
+    .await;
 
     assert!(result.is_err());
     assert_eq!(calls.load(Ordering::SeqCst), 3);
@@ -115,12 +122,16 @@ async fn closure_receives_the_attempt_number() {
     let seen = Mutex::new(Vec::new());
     let seen_ref = &seen;
 
-    let result: Result<(), anyhow::Error> =
-        retry("Test op", &logger, &fast_policy(3), move |attempt| async move {
+    let result: Result<(), anyhow::Error> = retry(
+        "Test op",
+        &logger,
+        &fast_policy(3),
+        move |attempt| async move {
             seen_ref.lock().unwrap().push(attempt);
             Err(anyhow::anyhow!("nope"))
-        })
-        .await;
+        },
+    )
+    .await;
 
     assert!(result.is_err());
     assert_eq!(*seen.lock().unwrap(), vec![1, 2, 3]);

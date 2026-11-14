@@ -23,7 +23,9 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     pub(crate) fn delay(&self, attempt: u32) -> Duration {
-        let exp = self.base_backoff.saturating_mul(1u32 << (attempt - 1).min(16));
+        let exp = self
+            .base_backoff
+            .saturating_mul(1u32 << (attempt - 1).min(16));
         let capped = exp.min(self.max_backoff);
         let half = capped / 2;
         let jitter = rand::rng().random_range(0..=half.as_millis() as u64);
@@ -51,7 +53,10 @@ where
         match f(attempt).await {
             Ok(v) => {
                 if attempt > 1 {
-                    logger.log("info", format!("{op} succeeded on attempt {attempt}/{total}"));
+                    logger.log(
+                        "info",
+                        format!("{op} succeeded on attempt {attempt}/{total}"),
+                    );
                 }
                 return Ok(v);
             }

@@ -37,7 +37,13 @@ impl BackupService {
             let generated_id = result_clone.generated_id.clone();
 
             async move {
-                logger_clone.log("info", format!("Uploading storage {:?} (id: {})", storage.provider, storage_id));
+                logger_clone.log(
+                    "info",
+                    format!(
+                        "Uploading storage {:?} (id: {})",
+                        storage.provider, storage_id
+                    ),
+                );
 
                 /*
                  INIT STEP
@@ -85,7 +91,10 @@ impl BackupService {
                  PROVIDER CHECK
                 */
                 let Some(provider) = provider else {
-                    logger_clone.log("error", format!("Missing provider for storage {}", storage_id));
+                    logger_clone.log(
+                        "error",
+                        format!("Missing provider for storage {}", storage_id),
+                    );
 
                     return UploadResult {
                         storage_id,
@@ -102,7 +111,10 @@ impl BackupService {
                 let policy = RetryPolicy::default();
 
                 let attempt_result = if result_clone.backup_file.is_none() {
-                    logger_clone.log("error", format!("Missing backup file for storage {}", storage_id));
+                    logger_clone.log(
+                        "error",
+                        format!("Missing backup file for storage {}", storage_id),
+                    );
 
                     Err(UploadResult {
                         storage_id: storage_id.clone(),
@@ -138,14 +150,21 @@ impl BackupService {
                     Ok(r) | Err(r) => r,
                 };
 
-                let status = if upload_result.success { "success" } else { "failed" };
+                let status = if upload_result.success {
+                    "success"
+                } else {
+                    "failed"
+                };
 
                 if status != "success" {
-                    logger_clone.log("error", format!(
-                        "Upload failed for storage {}: {}",
-                        storage_id,
-                        upload_result.error.as_deref().unwrap_or("unknown error")
-                    ));
+                    logger_clone.log(
+                        "error",
+                        format!(
+                            "Upload failed for storage {}: {}",
+                            storage_id,
+                            upload_result.error.as_deref().unwrap_or("unknown error")
+                        ),
+                    );
 
                     if let Err(err) = ctx_clone
                         .api
@@ -160,21 +179,24 @@ impl BackupService {
                         )
                         .await
                     {
-                        logger_clone.log("error", format!(
-                            "Failed-status update failed for {}: {}",
-                            storage_id, err
-                        ));
+                        logger_clone.log(
+                            "error",
+                            format!("Failed-status update failed for {}: {}", storage_id, err),
+                        );
                     }
 
                     return upload_result;
                 }
 
-                logger_clone.log("info", format!(
-                    "Storage {} uploaded to {:?} ({} bytes)",
-                    storage_id,
-                    upload_result.remote_file_path.clone().unwrap().to_string(),
-                    upload_result.total_size.unwrap_or(0)
-                ));
+                logger_clone.log(
+                    "info",
+                    format!(
+                        "Storage {} uploaded to {:?} ({} bytes)",
+                        storage_id,
+                        upload_result.remote_file_path.clone().unwrap().to_string(),
+                        upload_result.total_size.unwrap_or(0)
+                    ),
+                );
 
                 /*
                  METADATA VALIDATION
@@ -183,7 +205,13 @@ impl BackupService {
                     match (&upload_result.remote_file_path, upload_result.total_size) {
                         (Some(path), Some(size)) => (path.clone(), size),
                         _ => {
-                            logger_clone.log("error", format!("Missing remote_file_path or total_size for storage {}", storage_id));
+                            logger_clone.log(
+                                "error",
+                                format!(
+                                    "Missing remote_file_path or total_size for storage {}",
+                                    storage_id
+                                ),
+                            );
                             return UploadResult {
                                 storage_id,
                                 success: false,
@@ -213,7 +241,10 @@ impl BackupService {
                     Ok(_) => upload_result,
 
                     Err(err) => {
-                        logger_clone.log("error", format!("Upload status update failed for {}: {}", storage_id, err));
+                        logger_clone.log(
+                            "error",
+                            format!("Upload status update failed for {}: {}", storage_id, err),
+                        );
 
                         UploadResult {
                             storage_id,

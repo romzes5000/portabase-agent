@@ -20,9 +20,7 @@ fn write_key(private_key: &str) -> Result<NamedTempFile> {
     Ok(file)
 }
 
-pub fn build_sftp_config(
-    config: &SftpProviderConfig,
-) -> Result<(String, Option<NamedTempFile>)> {
+pub fn build_sftp_config(config: &SftpProviderConfig) -> Result<(String, Option<NamedTempFile>)> {
     if config.host.trim().is_empty() {
         bail!("sftp host is required");
     }
@@ -30,8 +28,14 @@ pub fn build_sftp_config(
         bail!("sftp username is required");
     }
 
-    let has_password = config.password.as_deref().is_some_and(|p| !p.trim().is_empty());
-    let has_key = config.private_key.as_deref().is_some_and(|k| !k.trim().is_empty());
+    let has_password = config
+        .password
+        .as_deref()
+        .is_some_and(|p| !p.trim().is_empty());
+    let has_key = config
+        .private_key
+        .as_deref()
+        .is_some_and(|k| !k.trim().is_empty());
     if !has_password && !has_key {
         bail!("sftp requires a password or a private key");
     }
@@ -50,12 +54,7 @@ pub fn build_sftp_config(
         String::new()
     };
 
-    let port = config
-        .port
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let port = config.port.as_deref().unwrap_or("").trim().to_string();
 
     let fields: &[(&str, String)] = &[
         ("type", "sftp".to_string()),
@@ -64,7 +63,13 @@ pub fn build_sftp_config(
         ("user", config.username.trim().to_string()),
         ("key_file", key_file_path),
         ("pass", pass),
-        ("connections", config.connections.map(|n| n.to_string()).unwrap_or_default()),
+        (
+            "connections",
+            config
+                .connections
+                .map(|n| n.to_string())
+                .unwrap_or_default(),
+        ),
         ("host_keys", config.host_keys.clone().unwrap_or_default()),
     ];
 

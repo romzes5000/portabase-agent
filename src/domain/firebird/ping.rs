@@ -1,9 +1,9 @@
-use std::process::Stdio;
-use tracing::{error, info};
-use tokio::io::AsyncWriteExt;
 use crate::services::config::DatabaseConfig;
+use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
+use tracing::{error, info};
 
 pub async fn run(cfg: DatabaseConfig) -> anyhow::Result<bool> {
     let db_path = format!("{}/{}:{}", cfg.host, cfg.port, cfg.database);

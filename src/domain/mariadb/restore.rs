@@ -9,7 +9,10 @@ use std::time::Instant;
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogger>) -> Result<()> {
     let handle = tokio::task::spawn_blocking(move || -> Result<()> {
-        logger.log("info", format!("Starting restore for database {}", cfg.name));
+        logger.log(
+            "info",
+            format!("Starting restore for database {}", cfg.name),
+        );
 
         let mut file = File::open(&restore_file)
             .with_context(|| format!("Failed to open restore file {}", restore_file.display()))?;
@@ -38,12 +41,35 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         let drop_stderr = String::from_utf8_lossy(&drop_output.stderr).to_string();
 
         if !drop_output.status.success() {
-            logger.log_command("mariadb", Some(drop_stderr.clone()), Some(drop_exit_code), Some(drop_duration_ms));
-            logger.log("error", format!("Drop/create database failed for {}: {}", cfg.name, drop_stderr));
+            logger.log_command(
+                "mariadb",
+                Some(drop_stderr.clone()),
+                Some(drop_exit_code),
+                Some(drop_duration_ms),
+            );
+            logger.log(
+                "error",
+                format!(
+                    "Drop/create database failed for {}: {}",
+                    cfg.name, drop_stderr
+                ),
+            );
             anyhow::bail!("Failed to drop/recreate database {}", cfg.name);
         }
-        logger.log_command("mariadb", if drop_stderr.is_empty() { None } else { Some(drop_stderr) }, Some(0), Some(drop_duration_ms));
-        logger.log("info", format!("Database {} dropped and recreated", cfg.name));
+        logger.log_command(
+            "mariadb",
+            if drop_stderr.is_empty() {
+                None
+            } else {
+                Some(drop_stderr)
+            },
+            Some(0),
+            Some(drop_duration_ms),
+        );
+        logger.log(
+            "info",
+            format!("Database {} dropped and recreated", cfg.name),
+        );
 
         let start = Instant::now();
 
@@ -75,13 +101,33 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            logger.log_command("mariadb", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
-            logger.log("error", format!("MariaDB restore failed for {}: {}", cfg.name, stderr));
+            logger.log_command(
+                "mariadb",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
+            logger.log(
+                "error",
+                format!("MariaDB restore failed for {}: {}", cfg.name, stderr),
+            );
             anyhow::bail!("MariaDB restore failed for {}", cfg.name);
         }
 
-        logger.log_command("mariadb", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
-        logger.log("info", format!("Restore finished successfully for database {}", cfg.name));
+        logger.log_command(
+            "mariadb",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
+        logger.log(
+            "info",
+            format!("Restore finished successfully for database {}", cfg.name),
+        );
         Ok(())
     });
 

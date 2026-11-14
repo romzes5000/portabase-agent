@@ -36,10 +36,23 @@ pub async fn run(
 
         let (excludes, invalid) = exclude_args(&cfg);
         for key in invalid {
-            logger.log("warn", format!("Ignoring options.{} for {}: expected a list of patterns", key, cfg.name));
+            logger.log(
+                "warn",
+                format!(
+                    "Ignoring options.{} for {}: expected a list of patterns",
+                    key, cfg.name
+                ),
+            );
         }
         if !excludes.is_empty() {
-            logger.log("info", format!("Excluding from dump of {}: {}", cfg.name, excludes.join(" ")));
+            logger.log(
+                "info",
+                format!(
+                    "Excluding from dump of {}: {}",
+                    cfg.name,
+                    excludes.join(" ")
+                ),
+            );
         }
 
         match format {
@@ -50,13 +63,18 @@ pub async fn run(
 
                 let start = Instant::now();
                 let output = Command::new(&pg_dump)
-                    .arg("--host").arg(&cfg.host)
-                    .arg("--port").arg(cfg.port.to_string())
-                    .arg("--username").arg(&cfg.username)
-                    .arg("--dbname").arg(&cfg.database)
+                    .arg("--host")
+                    .arg(&cfg.host)
+                    .arg("--port")
+                    .arg(cfg.port.to_string())
+                    .arg("--username")
+                    .arg(&cfg.username)
+                    .arg("--dbname")
+                    .arg(&cfg.database)
                     .args(&excludes)
                     .arg("-Fc")
-                    .arg("-f").arg(&file_path)
+                    .arg("-f")
+                    .arg(&file_path)
                     .arg("-v")
                     .arg("--compress=3")
                     .envs(env)
@@ -69,17 +87,51 @@ pub async fn run(
                         let exit_code = o.status.code().unwrap_or(-1);
 
                         if o.status.success() {
-                            logger.log("info", format!("FC backup completed successfully for {} at {:?}", cfg.name, file_path));
-                            logger.log_command("pg_dump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+                            logger.log(
+                                "info",
+                                format!(
+                                    "FC backup completed successfully for {} at {:?}",
+                                    cfg.name, file_path
+                                ),
+                            );
+                            logger.log_command(
+                                "pg_dump",
+                                if stderr.is_empty() {
+                                    None
+                                } else {
+                                    Some(stderr)
+                                },
+                                Some(0),
+                                Some(duration_ms),
+                            );
                         } else {
-                            logger.log("error", format!("FC backup failed with status {:?} for {}", o.status, cfg.name));
-                            logger.log_command("pg_dump", Some(stderr), Some(exit_code), Some(duration_ms));
+                            logger.log(
+                                "error",
+                                format!(
+                                    "FC backup failed with status {:?} for {}",
+                                    o.status, cfg.name
+                                ),
+                            );
+                            logger.log_command(
+                                "pg_dump",
+                                Some(stderr),
+                                Some(exit_code),
+                                Some(duration_ms),
+                            );
                             anyhow::bail!("Postgres backup failed for {}", cfg.name);
                         }
                     }
                     Err(e) => {
-                        logger.log("error", format!("Error executing pg_dump for {}: {:?}", cfg.name, e));
-                        logger.log_command("pg_dump", Some(e.to_string()), Some(-1), Some(duration_ms));
+                        logger.log(
+                            "error",
+                            format!("Error executing pg_dump for {}: {:?}", cfg.name, e),
+                        );
+                        logger.log_command(
+                            "pg_dump",
+                            Some(e.to_string()),
+                            Some(-1),
+                            Some(duration_ms),
+                        );
                         return Err(e.into());
                     }
                 }
@@ -94,22 +146,37 @@ pub async fn run(
                 let tar_file = backup_dir.join(format!("{}.tar.gz", cfg.generated_id));
 
                 if let Err(e) = std::fs::create_dir_all(&dump_dir) {
-                    logger.log("error", format!("Failed to create dump directory {:?} for {}: {:?}", dump_dir, cfg.name, e));
+                    logger.log(
+                        "error",
+                        format!(
+                            "Failed to create dump directory {:?} for {}: {:?}",
+                            dump_dir, cfg.name, e
+                        ),
+                    );
                     return Err(e.into());
                 }
 
-                let cmd_label = format!("pg_dump -Fd {}@{}:{}/{}", cfg.username, cfg.host, cfg.port, cfg.database);
+                let cmd_label = format!(
+                    "pg_dump -Fd {}@{}:{}/{}",
+                    cfg.username, cfg.host, cfg.port, cfg.database
+                );
 
                 let start = Instant::now();
                 let output = Command::new(&pg_dump)
-                    .arg("--host").arg(&cfg.host)
-                    .arg("--port").arg(cfg.port.to_string())
-                    .arg("--username").arg(&cfg.username)
-                    .arg("--dbname").arg(&cfg.database)
+                    .arg("--host")
+                    .arg(&cfg.host)
+                    .arg("--port")
+                    .arg(cfg.port.to_string())
+                    .arg("--username")
+                    .arg(&cfg.username)
+                    .arg("--dbname")
+                    .arg(&cfg.database)
                     .args(&excludes)
                     .arg("-Fd")
-                    .arg("-j").arg("4")
-                    .arg("-f").arg(&dump_dir)
+                    .arg("-j")
+                    .arg("4")
+                    .arg("-f")
+                    .arg(&dump_dir)
                     .arg("-v")
                     .envs(env)
                     .output();
@@ -120,37 +187,90 @@ pub async fn run(
                         let stderr = String::from_utf8_lossy(&o.stderr).to_string();
                         let exit_code = o.status.code().unwrap_or(-1);
                         if o.status.success() {
-                            logger.log("info", format!("FD backup pg_dump completed successfully for {}", cfg.name));
-                            logger.log_command(cmd_label, if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+                            logger.log(
+                                "info",
+                                format!(
+                                    "FD backup pg_dump completed successfully for {}",
+                                    cfg.name
+                                ),
+                            );
+                            logger.log_command(
+                                cmd_label,
+                                if stderr.is_empty() {
+                                    None
+                                } else {
+                                    Some(stderr)
+                                },
+                                Some(0),
+                                Some(duration_ms),
+                            );
                         } else {
-                            logger.log("error", format!("FD backup pg_dump failed with status {:?} for {}", o.status, cfg.name));
-                            logger.log_command(cmd_label, Some(stderr), Some(exit_code), Some(duration_ms));
+                            logger.log(
+                                "error",
+                                format!(
+                                    "FD backup pg_dump failed with status {:?} for {}",
+                                    o.status, cfg.name
+                                ),
+                            );
+                            logger.log_command(
+                                cmd_label,
+                                Some(stderr),
+                                Some(exit_code),
+                                Some(duration_ms),
+                            );
                             anyhow::bail!("Postgres FD backup failed for {}", cfg.name);
                         }
                     }
                     Err(e) => {
-                        logger.log("error", format!("Error executing pg_dump for {}: {:?}", cfg.name, e));
-                        logger.log_command(cmd_label, Some(e.to_string()), Some(-1), Some(duration_ms));
+                        logger.log(
+                            "error",
+                            format!("Error executing pg_dump for {}: {:?}", cfg.name, e),
+                        );
+                        logger.log_command(
+                            cmd_label,
+                            Some(e.to_string()),
+                            Some(-1),
+                            Some(duration_ms),
+                        );
                         return Err(e.into());
                     }
                 }
 
                 match std::fs::File::create(&tar_file) {
                     Ok(tar_gz) => {
-                        let enc = flate2::write::GzEncoder::new(tar_gz, flate2::Compression::default());
+                        let enc =
+                            flate2::write::GzEncoder::new(tar_gz, flate2::Compression::default());
                         let mut tar = tar::Builder::new(enc);
                         if let Err(e) = tar.append_dir_all(".", &dump_dir) {
-                            logger.log("error", format!("Failed to append dump_dir to tar for {}: {:?}", cfg.name, e));
+                            logger.log(
+                                "error",
+                                format!(
+                                    "Failed to append dump_dir to tar for {}: {:?}",
+                                    cfg.name, e
+                                ),
+                            );
                             return Err(e.into());
                         }
                         if let Err(e) = tar.finish() {
-                            logger.log("error", format!("Failed to finish tar archive for {}: {:?}",  cfg.name, e));
+                            logger.log(
+                                "error",
+                                format!("Failed to finish tar archive for {}: {:?}", cfg.name, e),
+                            );
                             return Err(e.into());
                         }
-                        logger.log("info", format!("FD backup archive created at {:?}", tar_file));
+                        logger.log(
+                            "info",
+                            format!("FD backup archive created at {:?}", tar_file),
+                        );
                     }
                     Err(e) => {
-                        logger.log("error", format!("Failed to create tar.gz file {:?} for {}: {:?}", tar_file, cfg.name, e));
+                        logger.log(
+                            "error",
+                            format!(
+                                "Failed to create tar.gz file {:?} for {}: {:?}",
+                                tar_file, cfg.name, e
+                            ),
+                        );
                         return Err(e.into());
                     }
                 }
@@ -163,5 +283,11 @@ pub async fn run(
 }
 
 pub(crate) fn exclude_args(cfg: &DatabaseConfig) -> (Vec<String>, Vec<&'static str>) {
-    list_option_args(cfg, &[("exclude_tables", "--exclude-table"), ("exclude_schemas", "--exclude-schema")])
+    list_option_args(
+        cfg,
+        &[
+            ("exclude_tables", "--exclude-table"),
+            ("exclude_schemas", "--exclude-schema"),
+        ],
+    )
 }

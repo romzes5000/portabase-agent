@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use crate::services::config::DatabaseConfig;
 use anyhow::Result;
+use std::path::PathBuf;
 use std::process::Command;
 
 pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
@@ -31,11 +31,16 @@ pub async fn server_version(cfg: &DatabaseConfig) -> Result<String> {
     Ok(version)
 }
 
-
 pub fn select_mariadb_path(version: &str) -> PathBuf {
     let mut parts = version.split('.');
-    let major = parts.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(10);
-    let minor = parts.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let major = parts
+        .next()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(10);
+    let minor = parts
+        .next()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
 
     if major < 10 || (major == 10 && minor <= 6) {
         "/usr/local/mariadb-10.6/bin".into()

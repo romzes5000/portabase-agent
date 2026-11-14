@@ -31,7 +31,13 @@ impl Database for MongoDatabase {
 
     async fn backup(&self, dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
-        let res = backup::run(self.cfg.clone(), dir.to_path_buf(), self.file_extension(), logger).await;
+        let res = backup::run(
+            self.cfg.clone(),
+            dir.to_path_buf(),
+            self.file_extension(),
+            logger,
+        )
+        .await;
         FileLock::release(&self.cfg.generated_id).await?;
         res
     }

@@ -12,7 +12,10 @@ pub fn files_method(cfg: &DatabaseConfig) -> &'static str {
     }
 }
 
-pub fn list_option_args(cfg: &DatabaseConfig, flags: &[(&'static str, &str)]) -> (Vec<String>, Vec<&'static str>) {
+pub fn list_option_args(
+    cfg: &DatabaseConfig,
+    flags: &[(&'static str, &str)],
+) -> (Vec<String>, Vec<&'static str>) {
     let mut args = Vec::new();
     let mut invalid = Vec::new();
     for &(key, flag) in flags {
@@ -32,7 +35,10 @@ pub fn list_option_args(cfg: &DatabaseConfig, flags: &[(&'static str, &str)]) ->
     (args, invalid)
 }
 
-pub fn validate_files_options(name: &str, options: Option<&HashMap<String, serde_json::Value>>) -> Result<(), String> {
+pub fn validate_files_options(
+    name: &str,
+    options: Option<&HashMap<String, serde_json::Value>>,
+) -> Result<(), String> {
     if let Some(method) = options.and_then(|options| options.get("method")) {
         if !method.as_str().is_some_and(|m| FILES_METHODS.contains(&m)) {
             return Err(format!(
@@ -61,8 +67,11 @@ pub fn validate_files_options(name: &str, options: Option<&HashMap<String, serde
 }
 
 fn is_size(value: &str) -> bool {
-    let number = value.strip_suffix(|suffix: char| "bkmgtp".contains(suffix.to_ascii_lowercase())).unwrap_or(value);
+    let number = value
+        .strip_suffix(|suffix: char| "bkmgtp".contains(suffix.to_ascii_lowercase()))
+        .unwrap_or(value);
     let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));
-    let all_digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let all_digits =
+        |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
     all_digits(whole) && all_digits(fraction)
 }

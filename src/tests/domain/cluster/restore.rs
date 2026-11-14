@@ -22,22 +22,35 @@ async fn backup_restore_round_trip_preserves_ownership() {
         .unwrap();
 
     let dir = TempDir::new().unwrap();
-    let sql = cluster::backup::run(src.clone(), dir.path().to_path_buf(), env_for(&src), Arc::new(JobLogger::new()))
-        .await
-        .unwrap();
+    let sql = cluster::backup::run(
+        src.clone(),
+        dir.path().to_path_buf(),
+        env_for(&src),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
 
     // Target cluster B: fresh, same bootstrap user.
     let (_b, mut dst) = start_cluster("testuser").await;
 
-    cluster::restore::run(dst.clone(), sql.clone(), env_for(&dst), Arc::new(JobLogger::new()))
-        .await
-        .unwrap();
+    cluster::restore::run(
+        dst.clone(),
+        sql.clone(),
+        env_for(&dst),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap();
 
     // Verify the seeded role exists and the table's owner was preserved on B.
     dst.database = "postgres".to_string();
     let bclient = connection::connect(&dst).await.unwrap();
     let role_exists: bool = bclient
-        .query_one("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'appowner');", &[])
+        .query_one(
+            "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'appowner');",
+            &[],
+        )
         .await
         .unwrap()
         .get(0);
@@ -72,9 +85,14 @@ async fn requires_superuser() {
     // The superuser pre-check happens before the dump file is read, so a
     // non-existent restore path is fine — it must never be touched.
     let missing = std::path::PathBuf::from("/nonexistent/cluster.sql");
-    let err = cluster::restore::run(weak.clone(), missing, env_for(&weak), Arc::new(JobLogger::new()))
-        .await
-        .unwrap_err();
+    let err = cluster::restore::run(
+        weak.clone(),
+        missing,
+        env_for(&weak),
+        Arc::new(JobLogger::new()),
+    )
+    .await
+    .unwrap_err();
 
     assert!(
         err.to_string().contains("superuser"),

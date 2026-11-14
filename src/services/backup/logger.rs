@@ -1,7 +1,7 @@
 use chrono::Utc;
 use serde::Serialize;
 use std::sync::Mutex;
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 #[derive(Serialize, Clone, Debug)]
 pub struct JobLogEntry {
@@ -41,7 +41,6 @@ impl JobLogger {
         }
     }
 
-
     #[allow(dead_code)]
     pub fn log(&self, level: &'static str, message: impl Into<String>) {
         let message = message.into();
@@ -73,34 +72,33 @@ impl JobLogger {
             _ => "error",
         };
 
-
         let cmd = command.into();
         let message = format!("Executed: {}", cmd);
 
         match level {
             "debug" => {
                 tracing::debug!(
-                command = %cmd,
-                exit_code = ?exit_code,
-                duration_ms = ?duration_ms,
-                "Command executed"
-            );
+                    command = %cmd,
+                    exit_code = ?exit_code,
+                    duration_ms = ?duration_ms,
+                    "Command executed"
+                );
             }
             "error" => {
                 tracing::error!(
-                command = %cmd,
-                exit_code = ?exit_code,
-                duration_ms = ?duration_ms,
-                "Command failed"
-            );
+                    command = %cmd,
+                    exit_code = ?exit_code,
+                    duration_ms = ?duration_ms,
+                    "Command failed"
+                );
             }
             _ => {
                 tracing::info!(
-                command = %cmd,
-                exit_code = ?exit_code,
-                duration_ms = ?duration_ms,
-                "Command executed"
-            );
+                    command = %cmd,
+                    exit_code = ?exit_code,
+                    duration_ms = ?duration_ms,
+                    "Command executed"
+                );
             }
         }
 

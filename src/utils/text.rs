@@ -2,7 +2,10 @@ pub fn normalize_cron(expr: &str) -> String {
     let fields: Vec<&str> = expr.split_whitespace().collect();
 
     let (sec, mut rest): (String, Vec<String>) = match fields.len() {
-        5 => ("0".to_string(), fields.iter().map(|s| s.to_string()).collect()),
+        5 => (
+            "0".to_string(),
+            fields.iter().map(|s| s.to_string()).collect(),
+        ),
         6 => (
             fields[0].to_string(),
             fields[1..].iter().map(|s| s.to_string()).collect(),

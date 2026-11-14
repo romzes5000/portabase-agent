@@ -54,7 +54,12 @@ pub fn folder_or_default(folder_name: Option<&str>) -> &str {
 }
 
 pub fn full_file_path(file_name: &String, folder_name: Option<&str>) -> String {
-    format!("{}/{}/{}", folder_or_default(folder_name), chrono::Local::now().format("%Y-%m-%d"), file_name)
+    format!(
+        "{}/{}/{}",
+        folder_or_default(folder_name),
+        chrono::Local::now().format("%Y-%m-%d"),
+        file_name
+    )
 }
 
 const CHUNK_SIZE: usize = 16 * 1024 * 1024;
@@ -201,8 +206,8 @@ pub fn decrypt_json_gcm(ciphertext_b64: &str, master_key_b64: &str) -> Result<Ve
         .map_err(|_| anyhow::anyhow!("Invalid AES-256 key length"))?;
     let cipher = Aes256Gcm::new(&key);
 
-    let nonce = Nonce::try_from(&data[..12])
-        .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
+    let nonce =
+        Nonce::try_from(&data[..12]).map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
 
     let plaintext = cipher
         .decrypt(&nonce, &data[12..])

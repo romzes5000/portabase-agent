@@ -35,7 +35,15 @@ impl BackupService {
 
         if let Some(files_engine) = FilesEngine::parse(&engine) {
             if matches!(db_cfg.db_type, DbType::Files) {
-                let uploads = files_engine::run(&self.ctx, &db_cfg, files_engine, &storages, &backup_id, &logger).await;
+                let uploads = files_engine::run(
+                    &self.ctx,
+                    &db_cfg,
+                    files_engine,
+                    &storages,
+                    &backup_id,
+                    &logger,
+                )
+                .await;
                 logger.log("info", "Database backup job finished".to_string());
                 let result = BackupResult {
                     generated_id: generated_id.clone(),
@@ -45,11 +53,17 @@ impl BackupService {
                     code: None,
                 };
                 let duration_ms = start.elapsed().as_millis() as f64;
-                let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-                self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
+                let logs = Arc::try_unwrap(logger)
+                    .unwrap_or_else(|_| JobLogger::new())
+                    .into_entries();
+                self.send_result(result, uploads, &backup_id, logs, duration_ms)
+                    .await?;
                 return Ok(());
             }
-            logger.log("warn", format!("The {engine} method only applies to files sources; making an archive"));
+            logger.log(
+                "warn",
+                format!("The {engine} method only applies to files sources; making an archive"),
+            );
         }
 
         let temp_dir = TempDir::new()?;
@@ -59,23 +73,38 @@ impl BackupService {
 
         if result.status == "failed" {
             let duration_ms = start.elapsed().as_millis() as f64;
-            let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-            self.send_result(result, vec![], &backup_id, logs, duration_ms).await?;
+            let logs = Arc::try_unwrap(logger)
+                .unwrap_or_else(|_| JobLogger::new())
+                .into_entries();
+            self.send_result(result, vec![], &backup_id, logs, duration_ms)
+                .await?;
             return Ok(());
         }
 
-        let compressed = self.compress_backup(result.backup_file.take(), Arc::clone(&logger)).await?;
+        let compressed = self
+            .compress_backup(result.backup_file.take(), Arc::clone(&logger))
+            .await?;
         result.backup_file = Some(compressed);
 
         let uploads = self
-            .upload(result.clone(), method, storages, encrypt, &backup_id, Arc::clone(&logger))
+            .upload(
+                result.clone(),
+                method,
+                storages,
+                encrypt,
+                &backup_id,
+                Arc::clone(&logger),
+            )
             .await?;
 
         logger.log("info", "Database backup job finished".to_string());
 
         let duration_ms = start.elapsed().as_millis() as f64;
-        let logs = Arc::try_unwrap(logger).unwrap_or_else(|_| JobLogger::new()).into_entries();
-        self.send_result(result, uploads, &backup_id, logs, duration_ms).await?;
+        let logs = Arc::try_unwrap(logger)
+            .unwrap_or_else(|_| JobLogger::new())
+            .into_entries();
+        self.send_result(result, uploads, &backup_id, logs, duration_ms)
+            .await?;
 
         Ok(())
     }

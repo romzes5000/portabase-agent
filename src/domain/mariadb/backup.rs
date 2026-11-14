@@ -32,19 +32,31 @@ pub async fn run(
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
         let _mariadb_dump = select_mariadb_path(&version).join("mariadb-dump");
 
-        logger.log("debug", format!("Using mariadb-dump at {}", _mariadb_dump.display()));
+        logger.log(
+            "debug",
+            format!("Using mariadb-dump at {}", _mariadb_dump.display()),
+        );
 
         if let Ok(out) = Command::new("mariadb-dump").arg("--version").output() {
-            logger.log("debug", format!("mariadb-dump client: {}", String::from_utf8_lossy(&out.stdout).trim()));
+            logger.log(
+                "debug",
+                format!(
+                    "mariadb-dump client: {}",
+                    String::from_utf8_lossy(&out.stdout).trim()
+                ),
+            );
         }
 
         logger.log("info", format!("Running mariadb-dump for {}", cfg.name));
 
         let start = Instant::now();
         let output = Command::new("mariadb-dump")
-            .arg("--host").arg(&cfg.host)
-            .arg("--port").arg(cfg.port.to_string())
-            .arg("--user").arg(&cfg.username)
+            .arg("--host")
+            .arg(&cfg.host)
+            .arg("--port")
+            .arg(cfg.port.to_string())
+            .arg("--user")
+            .arg(&cfg.username)
             .arg("--routines")
             .arg("--events")
             .arg("--triggers")
@@ -59,7 +71,8 @@ pub async fn run(
             .arg("--net-buffer-length=16K")
             .arg("--default-character-set=utf8mb4")
             .arg(&cfg.database)
-            .arg("-r").arg(&file_path)
+            .arg("-r")
+            .arg(&file_path)
             .envs(env)
             .output()
             .with_context(|| format!("Failed to run mariadb-dump for {}", cfg.name))?;
@@ -68,12 +81,26 @@ pub async fn run(
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            logger.log_command("mariadb-dump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log_command(
+                "mariadb-dump",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
             anyhow::bail!("Mariadb backup failed for {}: {}", cfg.name, stderr);
         }
 
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        logger.log_command("mariadb-dump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command(
+            "mariadb-dump",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
         logger.log("info", format!("mariadb-dump completed for {}", cfg.name));
         Ok(file_path)
     })

@@ -30,11 +30,23 @@ fn request_signature_matches_the_dashboard_vector() {
     let path = format!("/api/agent/{AGENT_ID}/status");
 
     assert_eq!(
-        sign_request(&key, "POST", &path, "1760968800", br#"{"version":"1.24.0","databases":[]}"#),
+        sign_request(
+            &key,
+            "POST",
+            &path,
+            "1760968800",
+            br#"{"version":"1.24.0","databases":[]}"#
+        ),
         "ad1e56a50ac0c4a3f539f3180d2957ebeb9a61bd1df44e57b50f8e59dd269069"
     );
     assert_eq!(
-        sign_request(&key, "POST", &path, "1760968800", "{\"name\":\"Base é\"}".as_bytes()),
+        sign_request(
+            &key,
+            "POST",
+            &path,
+            "1760968800",
+            "{\"name\":\"Base é\"}".as_bytes()
+        ),
         "d3e6911c9273e0224b8dbae72cabdd3720973f1866c651fb4c99e1ac03e73231"
     );
 }
@@ -60,12 +72,17 @@ fn invalid_master_key_logs_an_error_before_panicking() {
         .finish();
 
     let result = tracing::subscriber::with_default(subscriber, || {
-        std::panic::catch_unwind(|| ApiClient::new("http://dashboard").with_agent_auth(AGENT_ID, "not base64!"))
+        std::panic::catch_unwind(|| {
+            ApiClient::new("http://dashboard").with_agent_auth(AGENT_ID, "not base64!")
+        })
     });
 
     assert!(result.is_err(), "an invalid master key must stop the agent");
     let output = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
-    assert!(output.contains("ERROR") && output.contains("Invalid EDGE_KEY"), "logs: {output}");
+    assert!(
+        output.contains("ERROR") && output.contains("Invalid EDGE_KEY"),
+        "logs: {output}"
+    );
 }
 
 #[tokio::test]
@@ -79,8 +96,10 @@ async fn every_request_is_signed_with_a_fresh_timestamp() {
         .mount(&server)
         .await;
 
-    let client = ApiClient::new(server.uri())
-        .with_agent_auth(AGENT_ID, &general_purpose::STANDARD.encode(vector_master_key()));
+    let client = ApiClient::new(server.uri()).with_agent_auth(
+        AGENT_ID,
+        &general_purpose::STANDARD.encode(vector_master_key()),
+    );
     let body = serde_json::json!({"version": "1.24.0", "databases": [{"name": "Base é"}]});
 
     for i in 0..2 {
@@ -94,20 +113,35 @@ async fn every_request_is_signed_with_a_fresh_timestamp() {
     }
 
     let key = derive_agent_key(&vector_master_key(), AGENT_ID);
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let requests = server.received_requests().await.unwrap();
     let mut timestamps = Vec::new();
     for req in &requests {
-        let ts = req.headers.get("x-agent-timestamp").unwrap().to_str().unwrap();
+        let ts = req
+            .headers
+            .get("x-agent-timestamp")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(ts.chars().all(|c| c.is_ascii_digit()), "timestamp {ts}");
         assert!(now.abs_diff(ts.parse::<u64>().unwrap()) <= 5);
         assert_eq!(req.headers.get("content-type").unwrap(), "application/json");
         assert_eq!(
-            req.headers.get("x-agent-signature").unwrap().to_str().unwrap(),
+            req.headers
+                .get("x-agent-signature")
+                .unwrap()
+                .to_str()
+                .unwrap(),
             sign_request(&key, "POST", &format!("/api{route}"), ts, &req.body)
         );
         timestamps.push(ts.to_string());
     }
     assert_eq!(requests.len(), 2);
-    assert_ne!(timestamps[0], timestamps[1], "each call signs with its own timestamp");
+    assert_ne!(
+        timestamps[0], timestamps[1],
+        "each call signs with its own timestamp"
+    );
 }

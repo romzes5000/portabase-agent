@@ -64,7 +64,6 @@ pub async fn can_drop_database(cfg: &DatabaseConfig) -> Result<bool> {
     Ok(row.get(0))
 }
 
-
 pub fn select_pg_path(version: &str) -> std::path::PathBuf {
     select_pg_path_with(version, &CONFIG.pg_bin_dir)
 }

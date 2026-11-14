@@ -31,7 +31,12 @@ IF DB_ID(@P1) > 4 AND DATABASEPROPERTYEX(@P1, 'Status') = 'ONLINE'
 
 pub(crate) fn join_server_path(directory: &str, file_name: &str) -> String {
     let separator = if directory.contains('\\') { '\\' } else { '/' };
-    format!("{}{}{}", directory.trim_end_matches(['/', '\\']), separator, file_name)
+    format!(
+        "{}{}{}",
+        directory.trim_end_matches(['/', '\\']),
+        separator,
+        file_name
+    )
 }
 
 pub(crate) struct BackupFile<'a> {
@@ -50,10 +55,23 @@ pub(crate) fn target_path(
     if let Some(existing_path) = existing_files.get(file.logical_name) {
         return existing_path.clone();
     }
-    let directory = if file.kind == "L" { log_directory } else { data_directory };
-    let original_name = file.physical_name.rsplit(['/', '\\']).next().unwrap_or_default();
-    let extension = original_name.rfind('.').map_or("", |index| &original_name[index..]);
-    join_server_path(directory, &format!("{database}_{}{extension}", file.logical_name))
+    let directory = if file.kind == "L" {
+        log_directory
+    } else {
+        data_directory
+    };
+    let original_name = file
+        .physical_name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default();
+    let extension = original_name
+        .rfind('.')
+        .map_or("", |index| &original_name[index..]);
+    join_server_path(
+        directory,
+        &format!("{database}_{}{extension}", file.logical_name),
+    )
 }
 
 fn shared_file(cfg: &DatabaseConfig) -> Result<(String, PathBuf)> {
@@ -63,26 +81,48 @@ fn shared_file(cfg: &DatabaseConfig) -> Result<(String, PathBuf)> {
             .and_then(|value| value.as_str())
             .filter(|value| !value.trim().is_empty())
     };
-    let (Some(server_path), Some(agent_path)) = (option("bak_server_path"), option("bak_agent_path")) else {
-        anyhow::bail!("MSSQL .bak needs the bak_server_path and bak_agent_path options for {}", cfg.name);
+    let (Some(server_path), Some(agent_path)) =
+        (option("bak_server_path"), option("bak_agent_path"))
+    else {
+        anyhow::bail!(
+            "MSSQL .bak needs the bak_server_path and bak_agent_path options for {}",
+            cfg.name
+        );
     };
     let file_name = format!("{}.bak", cfg.generated_id);
-    Ok((join_server_path(server_path, &file_name), Path::new(agent_path).join(file_name)))
+    Ok((
+        join_server_path(server_path, &file_name),
+        Path::new(agent_path).join(file_name),
+    ))
 }
 
 async fn remove_shared_file(agent_file: &Path, logger: &JobLogger) {
     match tokio::fs::remove_file(agent_file).await {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => logger.log(
             "warn",
-            format!("Could not remove {}, the next backup overwrites it: {error}", agent_file.display()),
+            format!(
+                "Could not remove {}, the next backup overwrites it: {error}",
+                agent_file.display()
+            ),
         ),
         _ => {}
     }
 }
 
-pub async fn backup(cfg: &DatabaseConfig, backup_dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
+pub async fn backup(
+    cfg: &DatabaseConfig,
+    backup_dir: &Path,
+    logger: Arc<JobLogger>,
+) -> Result<PathBuf> {
     let (server_file, agent_file) = shared_file(cfg)?;
-    let outcome = backup_to_archive(cfg, backup_dir, &server_file, &agent_file, Arc::clone(&logger)).await;
+    let outcome = backup_to_archive(
+        cfg,
+        backup_dir,
+        &server_file,
+        &agent_file,
+        Arc::clone(&logger),
+    )
+    .await;
     remove_shared_file(&agent_file, &logger).await;
     outcome
 }
@@ -94,7 +134,13 @@ async fn backup_to_archive(
     agent_file: &Path,
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
-    logger.log("info", format!("Starting MSSQL bak backup: {}:{}/{} → {}", cfg.host, cfg.port, cfg.database, server_file));
+    logger.log(
+        "info",
+        format!(
+            "Starting MSSQL bak backup: {}:{}/{} → {}",
+            cfg.host, cfg.port, cfg.database, server_file
+        ),
+    );
     let mut client = build_client(cfg, Some("master"))
         .await
         .map_err(|error| anyhow!("Failed to connect to master for {}: {error}", cfg.name))?;
@@ -103,21 +149,47 @@ async fn backup_to_archive(
     let start = Instant::now();
     match client.execute(BACKUP_COMPRESSED_SQL, &params).await {
         Err(TiberiusError::Server(error)) if error.code() == COMPRESSION_UNSUPPORTED => {
-            logger.log("info", format!("Backup compression is not available on this server: {}", error.message()));
+            logger.log(
+                "info",
+                format!(
+                    "Backup compression is not available on this server: {}",
+                    error.message()
+                ),
+            );
             client.execute(BACKUP_SQL, &params).await
         }
         outcome => outcome,
     }
     .map_err(|error| anyhow!("MSSQL backup failed for {}: {error}", cfg.name))?;
-    logger.log_command(format!("BACKUP DATABASE [{}] TO DISK = {}", cfg.database, server_file), None, Some(0), Some(start.elapsed().as_millis() as f64));
+    logger.log_command(
+        format!(
+            "BACKUP DATABASE [{}] TO DISK = {}",
+            cfg.database, server_file
+        ),
+        None,
+        Some(0),
+        Some(start.elapsed().as_millis() as f64),
+    );
 
-    if cfg.options.get("bak_verify").and_then(|value| value.as_bool()).unwrap_or(false) {
+    if cfg
+        .options
+        .get("bak_verify")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    {
         let start = Instant::now();
         client
             .execute(VERIFY_SQL, &[&server_file])
             .await
-            .map_err(|error| anyhow!("MSSQL backup verification failed for {}: {error}", cfg.name))?;
-        logger.log_command("RESTORE VERIFYONLY", None, Some(0), Some(start.elapsed().as_millis() as f64));
+            .map_err(|error| {
+                anyhow!("MSSQL backup verification failed for {}: {error}", cfg.name)
+            })?;
+        logger.log_command(
+            "RESTORE VERIFYONLY",
+            None,
+            Some(0),
+            Some(start.elapsed().as_millis() as f64),
+        );
     }
 
     if let Err(error) = tokio::fs::metadata(agent_file).await {
@@ -132,7 +204,11 @@ async fn backup_to_archive(
     Ok(archive)
 }
 
-pub async fn restore(cfg: &DatabaseConfig, restore_file: &Path, logger: Arc<JobLogger>) -> Result<()> {
+pub async fn restore(
+    cfg: &DatabaseConfig,
+    restore_file: &Path,
+    logger: Arc<JobLogger>,
+) -> Result<()> {
     let (server_file, agent_file) = shared_file(cfg)?;
     let outcome = async {
         copy_to_shared(restore_file, &agent_file)
@@ -153,8 +229,18 @@ async fn copy_to_shared(restore_file: &Path, agent_file: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn restore_from_shared(cfg: &DatabaseConfig, server_file: &str, logger: &JobLogger) -> Result<()> {
-    logger.log("info", format!("Starting MSSQL bak restore: {} → {}:{}/{}", server_file, cfg.host, cfg.port, cfg.database));
+async fn restore_from_shared(
+    cfg: &DatabaseConfig,
+    server_file: &str,
+    logger: &JobLogger,
+) -> Result<()> {
+    logger.log(
+        "info",
+        format!(
+            "Starting MSSQL bak restore: {} → {}:{}/{}",
+            server_file, cfg.host, cfg.port, cfg.database
+        ),
+    );
     let mut client = build_client(cfg, Some("master"))
         .await
         .with_context(|| format!("Failed to connect to master for {}", cfg.name))?;
@@ -180,10 +266,19 @@ async fn restore_from_shared(cfg: &DatabaseConfig, server_file: &str, logger: &J
         .pop()
         .unwrap_or_default()
         .iter()
-        .filter_map(|row| Some((row.get::<&str, _>(0)?.to_string(), row.get::<&str, _>(1)?.to_string())))
+        .filter_map(|row| {
+            Some((
+                row.get::<&str, _>(0)?.to_string(),
+                row.get::<&str, _>(1)?.to_string(),
+            ))
+        })
         .collect();
-    let data_directory: &str = default_paths.get(0).context("SQL Server did not report its default data path")?;
-    let log_directory: &str = default_paths.get(1).context("SQL Server did not report its default log path")?;
+    let data_directory: &str = default_paths
+        .get(0)
+        .context("SQL Server did not report its default data path")?;
+    let log_directory: &str = default_paths
+        .get(1)
+        .context("SQL Server did not report its default log path")?;
 
     let relocations: Vec<(String, String)> = backup_rows
         .iter()
@@ -193,7 +288,13 @@ async fn restore_from_shared(cfg: &DatabaseConfig, server_file: &str, logger: &J
                 physical_name: row.get("PhysicalName")?,
                 kind: row.get("Type")?,
             };
-            let path = target_path(&cfg.database, &file, &existing_files, data_directory, log_directory);
+            let path = target_path(
+                &cfg.database,
+                &file,
+                &existing_files,
+                data_directory,
+                log_directory,
+            );
             Some((file.logical_name.to_string(), path))
         })
         .collect();
@@ -202,7 +303,8 @@ async fn restore_from_shared(cfg: &DatabaseConfig, server_file: &str, logger: &J
         .map(|index| format!("MOVE @P{} TO @P{}", 3 + 2 * index, 4 + 2 * index))
         .collect::<Vec<_>>()
         .join(", ");
-    let restore_sql = format!("{TAKE_OVER_SQL}\nRESTORE DATABASE @P1 FROM DISK = @P2 WITH REPLACE, {moves};");
+    let restore_sql =
+        format!("{TAKE_OVER_SQL}\nRESTORE DATABASE @P1 FROM DISK = @P2 WITH REPLACE, {moves};");
 
     let database = cfg.database.as_str();
     let mut params: Vec<&dyn ToSql> = vec![&database, &server_file];
@@ -214,11 +316,19 @@ async fn restore_from_shared(cfg: &DatabaseConfig, server_file: &str, logger: &J
     let start = Instant::now();
     if let Err(restore_error) = client.execute(restore_sql, &params).await {
         if let Err(release_error) = client.execute(RELEASE_SQL, &[&database]).await {
-            logger.log("warn", format!("Could not set {database} back to MULTI_USER: {release_error}"));
+            logger.log(
+                "warn",
+                format!("Could not set {database} back to MULTI_USER: {release_error}"),
+            );
         }
         anyhow::bail!("MSSQL restore failed for {}: {restore_error}", cfg.name);
     }
-    logger.log_command(format!("RESTORE DATABASE [{database}] WITH REPLACE"), None, Some(0), Some(start.elapsed().as_millis() as f64));
+    logger.log_command(
+        format!("RESTORE DATABASE [{database}] WITH REPLACE"),
+        None,
+        Some(0),
+        Some(start.elapsed().as_millis() as f64),
+    );
     logger.log("info", format!("MSSQL restore completed for {}", cfg.name));
     Ok(())
 }

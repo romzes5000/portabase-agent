@@ -16,7 +16,10 @@ use std::time::Instant;
 pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
         futures::executor::block_on(async move {
-            logger.log("info", format!("Starting docker-volume restore for {}", cfg.name));
+            logger.log(
+                "info",
+                format!("Starting docker-volume restore for {}", cfg.name),
+            );
 
             let docker = client()?;
             let image = resolve_helper_image(&docker).await?;
@@ -41,7 +44,6 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
                 .await?;
                 start_container(&docker, &helper.id).await?;
 
-
                 let exec = docker
                     .create_exec(
                         &helper.id,
@@ -59,8 +61,10 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
                     .await
                     .context("Failed to create wipe exec")?;
 
-                if let StartExecResults::Attached { mut output, .. } =
-                    docker.start_exec(&exec.id, None).await.context("Failed to run wipe exec")?
+                if let StartExecResults::Attached { mut output, .. } = docker
+                    .start_exec(&exec.id, None)
+                    .await
+                    .context("Failed to run wipe exec")?
                 {
                     while output.next().await.is_some() {}
                 }
@@ -72,14 +76,26 @@ pub async fn run(cfg: DatabaseConfig, archive: PathBuf, logger: Arc<JobLogger>) 
                     .with_context(|| format!("Failed to open {}", archive.display()))?;
                 let stream = tokio_util::io::ReaderStream::new(file);
 
-                let up_opts = UploadToContainerOptions { path: target_path.to_string(), ..Default::default() };
+                let up_opts = UploadToContainerOptions {
+                    path: target_path.to_string(),
+                    ..Default::default()
+                };
                 docker
-                    .upload_to_container(&helper.id, Some(up_opts), bollard::body_try_stream(stream))
+                    .upload_to_container(
+                        &helper.id,
+                        Some(up_opts),
+                        bollard::body_try_stream(stream),
+                    )
                     .await
                     .context("Failed to upload volume archive")?;
 
                 let duration_ms = start.elapsed().as_millis() as f64;
-                logger.log_command("docker upload_to_container", None, Some(0), Some(duration_ms));
+                logger.log_command(
+                    "docker upload_to_container",
+                    None,
+                    Some(0),
+                    Some(duration_ms),
+                );
 
                 remove_helper(&docker, &helper.id).await;
                 logger.log("info", format!("Volume restore completed for {}", cfg.name));

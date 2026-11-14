@@ -1,17 +1,17 @@
 use anyhow::{Context as _, Result, anyhow};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use chrono::{Duration, Utc};
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
-use url::Url;
 use azure_core::http::RequestContent;
 use azure_storage_blob::clients::{BlobClient, BlockBlobClient};
 use azure_storage_blob::models::BlockLookupList;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use bytes::{Bytes, BytesMut};
+use chrono::{Duration, Utc};
 use futures::{Stream, StreamExt};
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha256;
 use std::pin::Pin;
 use tracing::info;
+use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct ResolvedAzure {
@@ -29,7 +29,10 @@ pub enum SasResource {
 
 impl SasResource {
     fn code(self) -> &'static str {
-        match self { SasResource::Blob => "b", SasResource::Container => "c" }
+        match self {
+            SasResource::Blob => "b",
+            SasResource::Container => "c",
+        }
     }
 }
 
@@ -55,15 +58,29 @@ pub fn build_service_sas(
 
     let signed_start = String::new();
     let signed_expiry = (Utc::now() + Duration::hours(1))
-        .format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
     let signed_protocol = "https,http"; // Azurite is http
     let signed_resource = resource.code();
 
     let string_to_sign = format!(
         "{sp}\n{st}\n{se}\n{canon}\n{si}\n{sip}\n{spr}\n{sv}\n{sr}\n{snap}\n{enc}\n{rscc}\n{rscd}\n{rsce}\n{rscl}\n{rsct}",
-        sp = permissions, st = signed_start, se = signed_expiry, canon = canonical_resource,
-        si = "", sip = "", spr = signed_protocol, sv = SAS_VERSION, sr = signed_resource,
-        snap = "", enc = "", rscc = "", rscd = "", rsce = "", rscl = "", rsct = "",
+        sp = permissions,
+        st = signed_start,
+        se = signed_expiry,
+        canon = canonical_resource,
+        si = "",
+        sip = "",
+        spr = signed_protocol,
+        sv = SAS_VERSION,
+        sr = signed_resource,
+        snap = "",
+        enc = "",
+        rscc = "",
+        rscd = "",
+        rsce = "",
+        rscl = "",
+        rsct = "",
     );
 
     let sig = hmac_sha256_b64(&key, &string_to_sign)?;
@@ -93,15 +110,26 @@ pub fn build_sas_url(
     let pairs = build_service_sas(resolved, &canonical, resource, permissions)?;
 
     let base = if blob.is_empty() {
-        format!("{}/{}", resolved.blob_endpoint.trim_end_matches('/'), container)
+        format!(
+            "{}/{}",
+            resolved.blob_endpoint.trim_end_matches('/'),
+            container
+        )
     } else {
-        format!("{}/{}/{}", resolved.blob_endpoint.trim_end_matches('/'), container, blob)
+        format!(
+            "{}/{}/{}",
+            resolved.blob_endpoint.trim_end_matches('/'),
+            container,
+            blob
+        )
     };
 
     let mut url = Url::parse(&base).context("invalid blob endpoint/url")?;
     {
         let mut qp = url.query_pairs_mut();
-        for (k, v) in pairs { qp.append_pair(&k, &v); }
+        for (k, v) in pairs {
+            qp.append_pair(&k, &v);
+        }
     }
     Ok(url)
 }

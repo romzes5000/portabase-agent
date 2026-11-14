@@ -13,7 +13,10 @@ pub async fn run(
     logger: Arc<JobLogger>,
 ) -> Result<PathBuf> {
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-        logger.log("info", format!("Starting SQLite backup for database {}", cfg.name));
+        logger.log(
+            "info",
+            format!("Starting SQLite backup for database {}", cfg.name),
+        );
 
         let db_path_str = if cfg.path.is_empty() {
             anyhow::bail!("Database path not configured");
@@ -25,7 +28,10 @@ pub async fn run(
         logger.log("info", format!("Database path: {}", db_path.display()));
 
         if !db_path.exists() {
-            logger.log("error", format!("SQLite database file not found: {}", db_path.display()));
+            logger.log(
+                "error",
+                format!("SQLite database file not found: {}", db_path.display()),
+            );
             anyhow::bail!("SQLite database file not found: {}", db_path.display());
         }
 
@@ -44,8 +50,16 @@ pub async fn run(
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            logger.log("error", format!("SQLite backup failed for {}: {}", cfg.name, stderr));
-            logger.log_command("sqlite3", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log(
+                "error",
+                format!("SQLite backup failed for {}: {}", cfg.name, stderr),
+            );
+            logger.log_command(
+                "sqlite3",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
             anyhow::bail!("SQLite backup failed for {}: {}", cfg.name, stderr);
         }
 

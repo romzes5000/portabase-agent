@@ -21,19 +21,29 @@ pub async fn restore(
     }
     let target = ensure_restorable(Path::new(&cfg.path))?;
 
-    let listed = repo.run(["snapshots", snapshot_id, "--json"], logger).await?;
+    let listed = repo
+        .run(["snapshots", snapshot_id, "--json"], logger)
+        .await?;
     if listed.code != 0 {
         return Err(listed.error("snapshots"));
     }
     let snapshots: Vec<Snapshot> = serde_json::from_str(listed.stdout.trim())
         .context("unexpected `restic snapshots` output")?;
     let Some(original) = snapshots.first().and_then(|s| s.paths.first()) else {
-        bail!("snapshot {} not found in {}", short(snapshot_id), repo.repository());
+        bail!(
+            "snapshot {} not found in {}",
+            short(snapshot_id),
+            repo.repository()
+        );
     };
 
     let mut excludes = restore_excludes(&exclude_patterns(cfg))?;
     if one_file_system(cfg) {
-        excludes.extend(mount_points(&target).into_iter().map(|rel| format!("/{}", glob_escape(&rel))));
+        excludes.extend(
+            mount_points(&target)
+                .into_iter()
+                .map(|rel| format!("/{}", glob_escape(&rel))),
+        );
     }
     let mut args: Vec<String> = vec![
         "restore".into(),
@@ -50,7 +60,11 @@ pub async fn restore(
 
     logger.log(
         "info",
-        format!("Restoring snapshot {} ({original}) into {}", short(snapshot_id), target.display()),
+        format!(
+            "Restoring snapshot {} ({original}) into {}",
+            short(snapshot_id),
+            target.display()
+        ),
     );
     let run = repo.run(&args, logger).await?;
     for error in &run.errors {
@@ -73,10 +87,15 @@ pub async fn restore(
 }
 
 fn mount_points(root: &Path) -> Vec<String> {
-    let Ok(meta) = std::fs::metadata(root) else { return Vec::new() };
+    let Ok(meta) = std::fs::metadata(root) else {
+        return Vec::new();
+    };
     let root_dev = dev(&meta);
     let mut out = Vec::new();
-    let mut walker = WalkDir::new(root).min_depth(1).follow_links(false).into_iter();
+    let mut walker = WalkDir::new(root)
+        .min_depth(1)
+        .follow_links(false)
+        .into_iter();
     while let Some(entry) = walker.next() {
         let Ok(entry) = entry else { continue };
         if !entry.file_type().is_dir() {

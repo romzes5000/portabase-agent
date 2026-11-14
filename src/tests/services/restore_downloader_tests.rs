@@ -79,7 +79,9 @@ async fn a_restore_whose_download_fails_is_reported_as_failed_with_its_logs() {
 
     Mock::given(method("POST"))
         .and(path("/agent/agent-1/restore"))
-        .and(body_partial_json(json!({ "generatedId": "database-1", "status": "failed" })))
+        .and(body_partial_json(
+            json!({ "generatedId": "database-1", "status": "failed" }),
+        ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&server)
@@ -129,5 +131,9 @@ async fn a_restore_whose_download_fails_is_reported_as_failed_with_its_logs() {
         .filter_map(|entry| entry["message"].as_str())
         .collect();
 
-    assert!(messages.iter().any(|message| message.starts_with("Download failed")));
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.starts_with("Download failed"))
+    );
 }

@@ -40,7 +40,10 @@ pub async fn check_and_update_cron(
         Some(cron) => {
             let raw_cron = cron;
             let cron = normalize_cron(&raw_cron);
-            debug!("Task cron normalized: unix \"{}\" -> crate \"{}\"", raw_cron, cron);
+            debug!(
+                "Task cron normalized: unix \"{}\" -> crate \"{}\"",
+                raw_cron, cron
+            );
 
             let stored: Option<models::PeriodicTask> = if exists {
                 let raw: Option<String> = match conn.hget(&redis_key, "data").await {

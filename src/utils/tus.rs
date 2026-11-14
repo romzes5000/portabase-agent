@@ -1,9 +1,9 @@
+use crate::settings::CONFIG;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use tracing::{error, info};
-use crate::settings::CONFIG;
 
 pub async fn upload_to_tus_stream_with_headers<S>(
     encrypted_stream: S,

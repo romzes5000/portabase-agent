@@ -16,7 +16,6 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{GenericImage, ImageExt};
 use url::Url;
 
-
 fn build_account_sas(
     resolved: &ResolvedAzure,
     services: &str,
@@ -36,9 +35,16 @@ fn build_account_sas(
     let encryption_scope = String::new();
     let string_to_sign = format!(
         "{acc}\n{sp}\n{ss}\n{srt}\n{st}\n{se}\n{sip}\n{spr}\n{sv}\n{ses}\n",
-        acc = resolved.account_name, sp = permissions, ss = services, srt = resource_types,
-        st = signed_start, se = signed_expiry, sip = signed_ip, spr = signed_protocol,
-        sv = SAS_VERSION, ses = encryption_scope,
+        acc = resolved.account_name,
+        sp = permissions,
+        ss = services,
+        srt = resource_types,
+        st = signed_start,
+        se = signed_expiry,
+        sip = signed_ip,
+        spr = signed_protocol,
+        sv = SAS_VERSION,
+        ses = encryption_scope,
     );
 
     let sig = hmac_sha256_b64(&key, &string_to_sign)?;
@@ -62,7 +68,11 @@ fn build_account_sas_container_url(
     permissions: &str,
 ) -> anyhow::Result<Url> {
     let pairs = build_account_sas(resolved, services, resource_types, permissions)?;
-    let base = format!("{}/{}", resolved.blob_endpoint.trim_end_matches('/'), container);
+    let base = format!(
+        "{}/{}",
+        resolved.blob_endpoint.trim_end_matches('/'),
+        container
+    );
     let mut url = Url::parse(&base).context("invalid blob endpoint/url")?;
     {
         let mut qp = url.query_pairs_mut();
@@ -83,8 +93,15 @@ async fn start_azurite() -> (testcontainers::ContainerAsync<GenericImage>, Resol
         .with_wait_for(WaitFor::message_on_stdout(
             "Azurite Blob service successfully listens on",
         ))
-        .with_cmd(["azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck"])
-        .start().await.unwrap();
+        .with_cmd([
+            "azurite-blob",
+            "--blobHost",
+            "0.0.0.0",
+            "--skipApiVersionCheck",
+        ])
+        .start()
+        .await
+        .unwrap();
 
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(10000).await.unwrap();
@@ -103,7 +120,6 @@ async fn spike_sas_block_roundtrip_against_azurite() {
     let container = "portabase";
     let blob = "spike/hello.txt";
 
-
     let container_url =
         build_account_sas_container_url(&resolved, container, "b", "c", "cw").unwrap();
     let container_client =
@@ -116,11 +132,22 @@ async fn spike_sas_block_roundtrip_against_azurite() {
 
     let payload = Bytes::from_static(b"hello azurite");
     let raw_id = format!("{:032}", 0u32).into_bytes();
-    bbc.stage_block(&raw_id, payload.len() as u64, RequestContent::from(payload.to_vec()), None)
-        .await.unwrap();
+    bbc.stage_block(
+        &raw_id,
+        payload.len() as u64,
+        RequestContent::from(payload.to_vec()),
+        None,
+    )
+    .await
+    .unwrap();
 
-    let block_list = BlockLookupList { latest: Some(vec![raw_id.clone()]), ..Default::default() };
-    bbc.commit_block_list(block_list.try_into().unwrap(), None).await.unwrap();
+    let block_list = BlockLookupList {
+        latest: Some(vec![raw_id.clone()]),
+        ..Default::default()
+    };
+    bbc.commit_block_list(block_list.try_into().unwrap(), None)
+        .await
+        .unwrap();
 
     let read_url = build_sas_url(&resolved, container, blob, SasResource::Blob, "r").unwrap();
     let read_client = BlobClient::new(read_url, None, None).unwrap();
@@ -135,7 +162,6 @@ mod resolve {
     const AZURITE_KEY: &str =
         "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
     const CONNECTION_STRING: &str = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;QueueEndpoint=http://localhost:10001/devstoreaccount1;TableEndpoint=http://localhost:10002/devstoreaccount1;";
-
 
     #[test]
     fn resolve_connection_string_mode() {
@@ -152,7 +178,6 @@ mod resolve {
         assert_eq!(r.account_key, AZURITE_KEY);
         assert_eq!(r.blob_endpoint, "http://localhost:10000/devstoreaccount1");
     }
-
 
     #[test]
     fn resolve_account_key_mode_injects_account_path() {

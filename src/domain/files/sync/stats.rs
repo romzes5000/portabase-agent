@@ -43,7 +43,10 @@ pub fn parse_log(stderr: &str) -> SyncLog {
             }
             continue;
         };
-        if let Some(stats) = value.get("stats").and_then(|s| serde_json::from_value(s.clone()).ok()) {
+        if let Some(stats) = value
+            .get("stats")
+            .and_then(|s| serde_json::from_value(s.clone()).ok())
+        {
             log.stats = Some(stats);
         }
         if let Some(level) = value.get("level").and_then(Value::as_str) {
@@ -70,7 +73,10 @@ pub fn progress(line: &str) -> Option<String> {
     let n = |key: &str| stats[key].as_u64().unwrap_or(0);
     let (bytes, total) = (n("bytes"), n("totalBytes"));
     let percent = if total > 0 { bytes * 100 / total } else { 100 };
-    let eta = stats["eta"].as_u64().map(|s| format!(", ETA {s}s")).unwrap_or_default();
+    let eta = stats["eta"]
+        .as_u64()
+        .map(|s| format!(", ETA {s}s"))
+        .unwrap_or_default();
     Some(format!(
         "{} / {} ({percent}%), {}/{} transferred, {}/{} checked, {} deleted, {}/s{eta}",
         human_size(bytes),

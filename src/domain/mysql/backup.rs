@@ -32,16 +32,25 @@ pub async fn run(
         let file_path = backup_dir.join(format!("{}{}", cfg.generated_id, file_extension));
 
         if let Ok(out) = Command::new("mysqldump").arg("--version").output() {
-            logger.log("debug", format!("mysqldump client: {}", String::from_utf8_lossy(&out.stdout).trim()));
+            logger.log(
+                "debug",
+                format!(
+                    "mysqldump client: {}",
+                    String::from_utf8_lossy(&out.stdout).trim()
+                ),
+            );
         }
 
         logger.log("info", format!("Running mysqldump for {}", cfg.name));
 
         let start = Instant::now();
         let output = Command::new("mysqldump")
-            .arg("--host").arg(&cfg.host)
-            .arg("--port").arg(cfg.port.to_string())
-            .arg("--user").arg(&cfg.username)
+            .arg("--host")
+            .arg(&cfg.host)
+            .arg("--port")
+            .arg(cfg.port.to_string())
+            .arg("--user")
+            .arg(&cfg.username)
             .arg("--routines")
             .arg("--events")
             .arg("--triggers")
@@ -57,7 +66,8 @@ pub async fn run(
             .arg("--network-timeout")
             .arg(format!("--max-allowed-packet={}", cfg.max_packet_size))
             .arg(&cfg.database)
-            .arg("-r").arg(&file_path)
+            .arg("-r")
+            .arg(&file_path)
             .envs(env)
             .output()
             .with_context(|| format!("Failed to run mysqldump for {}", cfg.name))?;
@@ -68,11 +78,25 @@ pub async fn run(
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            logger.log_command("mysqldump", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
+            logger.log_command(
+                "mysqldump",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
             anyhow::bail!("MySQL backup failed for {}: {}", cfg.name, stderr);
         }
 
-        logger.log_command("mysqldump", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command(
+            "mysqldump",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
         logger.log("info", format!("mysqldump completed for {}", cfg.name));
 
         Ok(file_path)

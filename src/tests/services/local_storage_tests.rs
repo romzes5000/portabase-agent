@@ -3,10 +3,10 @@
 //! restic on PATH (test container); the sync test only needs rclone.
 
 use crate::domain::files::platform::is_root;
-use crate::services::backup::logger::JobLogger;
 use crate::domain::files::restic::backup::snapshot;
 use crate::domain::files::restic::repo::ResticRepo;
 use crate::domain::files::restic::restore::restore;
+use crate::services::backup::logger::JobLogger;
 use crate::services::storage::providers::local::local_storage_password;
 use crate::tests::domain::files::files_config;
 use std::fs;
@@ -31,10 +31,27 @@ impl Drop for RcloneServer {
 
 /// `rclone serve <kind> --baseurl /storage/<prefix> <root>` on a free port, user
 /// `portabase`, credentials through the env like the dashboard does.
-pub(crate) fn serve(kind: &str, prefix: &str, root: &Path, extra: &[&str], password: &str) -> RcloneServer {
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+pub(crate) fn serve(
+    kind: &str,
+    prefix: &str,
+    root: &Path,
+    extra: &[&str],
+    password: &str,
+) -> RcloneServer {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
     let child = Command::new("rclone")
-        .args(["serve", kind, "--addr", &format!("127.0.0.1:{port}"), "--baseurl", &format!("/storage/{prefix}")])
+        .args([
+            "serve",
+            kind,
+            "--addr",
+            &format!("127.0.0.1:{port}"),
+            "--baseurl",
+            &format!("/storage/{prefix}"),
+        ])
         .args(extra)
         .arg(root)
         .env("RCLONE_USER", "portabase")
@@ -49,7 +66,10 @@ pub(crate) fn serve(kind: &str, prefix: &str, root: &Path, extra: &[&str], passw
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    RcloneServer { child, base_url: format!("http://127.0.0.1:{port}") }
+    RcloneServer {
+        child,
+        base_url: format!("http://127.0.0.1:{port}"),
+    }
 }
 
 fn tree(root: &Path) {
@@ -59,14 +79,26 @@ fn tree(root: &Path) {
 }
 
 fn local_repo(server: &RcloneServer, generated_id: &str, cache: &Path) -> ResticRepo {
-    ResticRepo::rest(&format!("{}/storage/restic", server.base_url), generated_id, "test-password", "s3cret", cache.to_path_buf())
+    ResticRepo::rest(
+        &format!("{}/storage/restic", server.base_url),
+        generated_id,
+        "test-password",
+        "s3cret",
+        cache.to_path_buf(),
+    )
 }
 
 #[tokio::test]
 async fn local_snapshot_and_restore_go_through_the_append_only_server() {
     let store = TempDir::new().unwrap();
     let work = TempDir::new().unwrap();
-    let server = serve("restic", "restic", store.path(), &["--append-only"], "s3cret");
+    let server = serve(
+        "restic",
+        "restic",
+        store.path(),
+        &["--append-only"],
+        "s3cret",
+    );
     let src = work.path().join("src");
     tree(&src);
     let cfg = files_config(&src, &[]);
@@ -76,12 +108,21 @@ async fn local_snapshot_and_restore_go_through_the_append_only_server() {
     let snap = snapshot(&repo, &cfg, "bs-1", &logger).await.unwrap();
 
     let repo_dir = store.path().join(&cfg.generated_id);
-    assert!(repo_dir.join("config").exists(), "repository written on the served disk");
-    assert_eq!(fs::read_dir(repo_dir.join("locks")).unwrap().count(), 0, "lock removed despite --append-only");
+    assert!(
+        repo_dir.join("config").exists(),
+        "repository written on the served disk"
+    );
+    assert_eq!(
+        fs::read_dir(repo_dir.join("locks")).unwrap().count(),
+        0,
+        "lock removed despite --append-only"
+    );
 
     fs::write(src.join("a.txt"), "changed").unwrap();
     fs::write(src.join("extra.txt"), "x").unwrap();
-    restore(&repo, &cfg, &snap.snapshot_id, &logger).await.unwrap();
+    restore(&repo, &cfg, &snap.snapshot_id, &logger)
+        .await
+        .unwrap();
     assert_eq!(fs::read_to_string(src.join("a.txt")).unwrap(), "v1");
     assert!(!src.join("extra.txt").exists());
 }
@@ -90,7 +131,13 @@ async fn local_snapshot_and_restore_go_through_the_append_only_server() {
 async fn the_agent_cannot_forget_on_the_local_server() {
     let store = TempDir::new().unwrap();
     let work = TempDir::new().unwrap();
-    let server = serve("restic", "restic", store.path(), &["--append-only"], "s3cret");
+    let server = serve(
+        "restic",
+        "restic",
+        store.path(),
+        &["--append-only"],
+        "s3cret",
+    );
     let src = work.path().join("src");
     tree(&src);
     let cfg = files_config(&src, &[]);
@@ -98,11 +145,18 @@ async fn the_agent_cannot_forget_on_the_local_server() {
     let logger = JobLogger::new();
     let snap = snapshot(&repo, &cfg, "bs-1", &logger).await.unwrap();
 
-    let forget = repo.run(["forget", snap.snapshot_id.as_str()], &logger).await.unwrap();
+    let forget = repo
+        .run(["forget", snap.snapshot_id.as_str()], &logger)
+        .await
+        .unwrap();
 
     assert_ne!(forget.code, 0, "append-only must refuse forget");
     let listed = repo.run(["snapshots", "--json"], &logger).await.unwrap();
-    assert!(listed.stdout.contains(&snap.snapshot_id), "{}", listed.stdout);
+    assert!(
+        listed.stdout.contains(&snap.snapshot_id),
+        "{}",
+        listed.stdout
+    );
 }
 
 #[tokio::test]
@@ -113,7 +167,13 @@ async fn unreadable_file_on_a_local_repo_keeps_the_snapshot_for_the_dashboard() 
     use std::os::unix::fs::PermissionsExt;
     let store = TempDir::new().unwrap();
     let work = TempDir::new().unwrap();
-    let server = serve("restic", "restic", store.path(), &["--append-only"], "s3cret");
+    let server = serve(
+        "restic",
+        "restic",
+        store.path(),
+        &["--append-only"],
+        "s3cret",
+    );
     let src = work.path().join("src");
     tree(&src);
     let locked = src.join("docs/b.txt");
@@ -125,7 +185,10 @@ async fn unreadable_file_on_a_local_repo_keeps_the_snapshot_for_the_dashboard() 
     let err = snapshot(&repo, &cfg, "bs-1", &logger).await.unwrap_err();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
 
-    assert!(err.to_string().contains("the dashboard forgets it"), "{err:#}");
+    assert!(
+        err.to_string().contains("the dashboard forgets it"),
+        "{err:#}"
+    );
     let listed = repo.run(["snapshots", "--json"], &logger).await.unwrap();
     assert!(listed.stdout.contains("bs:bs-1"), "{}", listed.stdout);
 }
@@ -150,14 +213,20 @@ async fn local_sync_mirrors_through_the_webdav_server() {
     Mock::given(method("POST"))
         .and(path("/agent/agent-1/backup/upload/init"))
         .and(body_partial_json(json!({ "engine": "sync" })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "message": "ok", "backupStorage": { "id": "bs" } })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "message": "ok", "backupStorage": { "id": "bs" } })),
+        )
         .expect(2)
         .mount(&api)
         .await;
     Mock::given(method("PATCH"))
         .and(path("/agent/agent-1/backup/upload/status"))
         .and(body_partial_json(json!({ "status": "success" })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "message": "ok", "backupStorage": { "id": "bs" } })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "message": "ok", "backupStorage": { "id": "bs" } })),
+        )
         .expect(2)
         .mount(&api)
         .await;
@@ -170,20 +239,41 @@ async fn local_sync_mirrors_through_the_webdav_server() {
         },
         api: ApiClient::new(api.uri()),
     };
-    let storage: DatabaseStorage =
-        serde_json::from_value(json!({ "id": "ch-local", "provider": "local", "folderName": "backups", "config": {} })).unwrap();
+    let storage: DatabaseStorage = serde_json::from_value(
+        json!({ "id": "ch-local", "provider": "local", "folderName": "backups", "config": {} }),
+    )
+    .unwrap();
     let src = work.path().join("src");
     tree(&src);
     let cfg = files_config(&src, &[]);
     let replica = store.path().join(&cfg.generated_id).join("current");
 
-    let first = one_storage(&ctx, &cfg, FilesEngine::Sync, &storage, "backup-1", &JobLogger::new()).await;
+    let first = one_storage(
+        &ctx,
+        &cfg,
+        FilesEngine::Sync,
+        &storage,
+        "backup-1",
+        &JobLogger::new(),
+    )
+    .await;
     assert!(first.success, "{:?}", first.error);
-    assert_eq!(first.remote_file_path.as_deref(), Some(format!("backups/sync/{}/current", cfg.generated_id).as_str()));
+    assert_eq!(
+        first.remote_file_path.as_deref(),
+        Some(format!("backups/sync/{}/current", cfg.generated_id).as_str())
+    );
     assert_eq!(fs::read_to_string(replica.join("docs/b.txt")).unwrap(), "b");
 
     fs::remove_file(src.join("docs/b.txt")).unwrap();
-    let second = one_storage(&ctx, &cfg, FilesEngine::Sync, &storage, "backup-2", &JobLogger::new()).await;
+    let second = one_storage(
+        &ctx,
+        &cfg,
+        FilesEngine::Sync,
+        &storage,
+        "backup-2",
+        &JobLogger::new(),
+    )
+    .await;
     assert!(second.success, "{:?}", second.error);
     assert!(!replica.join("docs/b.txt").exists(), "deletion propagated");
     assert!(replica.join("a.txt").exists());

@@ -3,7 +3,9 @@ use super::password::derive_password;
 use crate::services::api::models::agent::status::DatabaseStorage;
 use crate::services::backup::logger::JobLogger;
 use crate::services::storage::providers::local::{LOCAL_STORAGE_USER, local_storage_password};
-use crate::services::storage::providers::rclone::helpers::{max_connections, remote_target, write_config};
+use crate::services::storage::providers::rclone::helpers::{
+    max_connections, remote_target, write_config,
+};
 use crate::services::storage::providers::rclone::target::{RcloneTarget, rclone_target};
 use crate::settings::CONFIG;
 use crate::utils::edge_key::EdgeKey;
@@ -39,9 +41,14 @@ impl ResticRun {
     pub fn error(&self, op: &str) -> anyhow::Error {
         match self.code {
             10 => anyhow!("restic {op}: repository does not exist"),
-            11 => anyhow!("restic {op}: repository is locked by another operation (waited 5 minutes)"),
+            11 => {
+                anyhow!("restic {op}: repository is locked by another operation (waited 5 minutes)")
+            }
             12 => anyhow!("restic {op}: wrong repository password (did the master key change?)"),
-            code => anyhow!("restic {op} failed (exit {code}): {}", self.stderr_tail.trim()),
+            code => anyhow!(
+                "restic {op} failed (exit {code}): {}",
+                self.stderr_tail.trim()
+            ),
         }
     }
 }
@@ -58,7 +65,10 @@ fn usable_cache_dir(cache_dir: PathBuf) -> Option<PathBuf> {
     match std::fs::create_dir_all(&cache_dir) {
         Ok(()) => Some(cache_dir),
         Err(e) => {
-            tracing::warn!("restic cache dir {} unusable ({e}); running without cache", cache_dir.display());
+            tracing::warn!(
+                "restic cache dir {} unusable ({e}); running without cache",
+                cache_dir.display()
+            );
             None
         }
     }
@@ -70,7 +80,10 @@ impl ResticRepo {
         let cache_dir = PathBuf::from(&CONFIG.data_path).join("cache/restic");
         if storage.provider == "local" {
             return Ok(Self::rest(
-                &format!("{}/storage/restic", edge_key.server_url.trim_end_matches('/')),
+                &format!(
+                    "{}/storage/restic",
+                    edge_key.server_url.trim_end_matches('/')
+                ),
                 generated_id,
                 &password,
                 &local_storage_password(&edge_key.master_key_b64)?,
@@ -100,7 +113,11 @@ impl ResticRepo {
         password: &str,
         cache_dir: PathBuf,
     ) -> Result<Self> {
-        let path = remote_target(remote_name, base_path, &format!("{folder}/restic/{generated_id}"));
+        let path = remote_target(
+            remote_name,
+            base_path,
+            &format!("{folder}/restic/{generated_id}"),
+        );
         Ok(Self {
             repository: format!("rclone:{path}"),
             password: password.to_string(),
@@ -112,7 +129,13 @@ impl ResticRepo {
         })
     }
 
-    pub fn rest(base_url: &str, generated_id: &str, password: &str, server_password: &str, cache_dir: PathBuf) -> Self {
+    pub fn rest(
+        base_url: &str,
+        generated_id: &str,
+        password: &str,
+        server_password: &str,
+        cache_dir: PathBuf,
+    ) -> Self {
         Self {
             repository: format!("rest:{}/{generated_id}/", base_url.trim_end_matches('/')),
             password: password.to_string(),
@@ -141,7 +164,10 @@ impl ResticRepo {
         if let Some(n) = self.connections {
             args.extend(["-o".into(), format!("rclone.connections={n}").into()]);
         }
-        let shown: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        let shown: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         logger.log("debug", format!("restic {}", shown.join(" ")));
 
         let mut cmd = Command::new("restic");
@@ -154,7 +180,8 @@ impl ResticRepo {
             cmd.env("RCLONE_CONFIG", config.path());
         }
         if let Some((user, pass)) = &self.rest_auth {
-            cmd.env("RESTIC_REST_USERNAME", user).env("RESTIC_REST_PASSWORD", pass);
+            cmd.env("RESTIC_REST_USERNAME", user)
+                .env("RESTIC_REST_PASSWORD", pass);
         }
         let mut child = cmd
             .env("RESTIC_REPOSITORY", &self.repository)
@@ -189,11 +216,21 @@ impl ResticRepo {
             (errors, tail)
         });
 
-        let mut run = ResticRun { code: -1, stdout: String::new(), summary: None, errors: Vec::new(), stderr_tail: String::new() };
+        let mut run = ResticRun {
+            code: -1,
+            stdout: String::new(),
+            summary: None,
+            errors: Vec::new(),
+            stderr_tail: String::new(),
+        };
         let stdout = child.stdout.take().context("restic stdout unavailable")?;
         let mut lines = BufReader::new(stdout).lines();
         let mut next_pct = 10u32;
-        while let Some(line) = lines.next_line().await.context("failed to read restic output")? {
+        while let Some(line) = lines
+            .next_line()
+            .await
+            .context("failed to read restic output")?
+        {
             match json::parse(&line) {
                 Line::Status { percent_done } => {
                     let pct = (percent_done * 100.0) as u32;
@@ -223,9 +260,16 @@ impl ResticRepo {
         match cat.code {
             0 => Ok(()),
             10 => {
-                logger.log("info", format!("Initializing restic repository {}", self.repository));
+                logger.log(
+                    "info",
+                    format!("Initializing restic repository {}", self.repository),
+                );
                 let init = self.run(["init"], logger).await?;
-                if init.code == 0 { Ok(()) } else { Err(init.error("init")) }
+                if init.code == 0 {
+                    Ok(())
+                } else {
+                    Err(init.error("init"))
+                }
             }
             _ => Err(cat.error("cat config")),
         }

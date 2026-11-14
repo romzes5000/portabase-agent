@@ -11,7 +11,10 @@ use crate::utils::file::folder_or_default;
 use anyhow::Result;
 
 pub fn replica_path(storage: &DatabaseStorage, generated_id: &str) -> String {
-    format!("{}/sync/{generated_id}/current", folder_or_default(storage.folder_name.as_deref()))
+    format!(
+        "{}/sync/{generated_id}/current",
+        folder_or_default(storage.folder_name.as_deref())
+    )
 }
 
 const LOCAL_REMOTE: &str = "pblocal";
@@ -21,15 +24,27 @@ pub fn local_sync_config(edge_key: &EdgeKey) -> Result<String> {
         LOCAL_REMOTE,
         &[
             ("type", "webdav".into()),
-            ("url", format!("{}/storage/sync", edge_key.server_url.trim_end_matches('/'))),
+            (
+                "url",
+                format!("{}/storage/sync", edge_key.server_url.trim_end_matches('/')),
+            ),
             ("vendor", "rclone".into()),
             ("user", LOCAL_STORAGE_USER.into()),
-            ("pass", obscure_password(&local_storage_password(&edge_key.master_key_b64)?)?),
+            (
+                "pass",
+                obscure_password(&local_storage_password(&edge_key.master_key_b64)?)?,
+            ),
         ],
     )
 }
 
-pub async fn replicate(edge_key: &EdgeKey, cfg: &DatabaseConfig, storage: &DatabaseStorage, mode: Mode, logger: &JobLogger) -> Result<SyncStats> {
+pub async fn replicate(
+    edge_key: &EdgeKey,
+    cfg: &DatabaseConfig,
+    storage: &DatabaseStorage,
+    mode: Mode,
+    logger: &JobLogger,
+) -> Result<SyncStats> {
     if storage.provider == "local" {
         let dest = format!("{LOCAL_REMOTE}:{}/current", cfg.generated_id);
         return sync_dir(&local_sync_config(edge_key)?, &dest, cfg, mode, logger).await;

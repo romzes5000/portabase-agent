@@ -122,7 +122,8 @@ fn database_status_legacy_plaintext_storages() {
             "backup": { "action": false, "cron": null },
             "restore": { "action": false, "file": null, "metaFile": null, "size": null }
         }
-    })).unwrap();
+    }))
+    .unwrap();
 
     assert_eq!(status.storages.len(), 1);
     assert_eq!(status.storages_encrypted, None);
@@ -142,7 +143,8 @@ fn database_status_encrypted_envelope() {
             "backup": { "action": true, "cron": null },
             "restore": { "action": false, "file": null, "metaFile": null, "size": null }
         }
-    })).unwrap();
+    }))
+    .unwrap();
 
     assert!(status.storages.is_empty());
     assert_eq!(status.storages_encrypted, Some(true));
@@ -168,7 +170,7 @@ fn database_status_defaults_config_fields_absent() {
 #[test]
 fn resolve_dashboard_config_decrypts_full_entry() {
     use crate::services::status::resolve_dashboard_config;
-    use base64::{engine::general_purpose, Engine};
+    use base64::{Engine, engine::general_purpose};
 
     // 32-byte master key, base64 STANDARD (matches decrypt_json_gcm).
     let master_key_b64 = general_purpose::STANDARD.encode([7u8; 32]);
@@ -247,7 +249,7 @@ fn ping_without_engine_fields_defaults_to_none() {
 #[test]
 fn resolve_restore_storage_decrypts_the_snapshot_channel() {
     use crate::services::status::resolve_restore_storage;
-    use base64::{engine::general_purpose, Engine};
+    use base64::{Engine, engine::general_purpose};
 
     let master_key_b64 = general_purpose::STANDARD.encode([7u8; 32]);
     let channel = r#"[{"id":"ch-1","provider":"s3","folderName":"backups","config":{"endPointUrl":"s3.example.com","bucketName":"b"}}]"#;
@@ -267,7 +269,10 @@ fn resolve_restore_storage_decrypts_the_snapshot_channel() {
     .unwrap();
 
     assert_eq!(status.data.backup.engine.as_deref(), Some("restic"));
-    assert_eq!(status.data.restore.snapshot_id.as_deref(), Some(snapshot_id.as_str()));
+    assert_eq!(
+        status.data.restore.snapshot_id.as_deref(),
+        Some(snapshot_id.as_str())
+    );
 
     resolve_restore_storage(&mut status, &master_key_b64).unwrap();
 
@@ -280,7 +285,7 @@ fn resolve_restore_storage_decrypts_the_snapshot_channel() {
 #[test]
 fn resolve_restore_storage_rejects_a_bad_ciphertext() {
     use crate::services::status::resolve_restore_storage;
-    use base64::{engine::general_purpose, Engine};
+    use base64::{Engine, engine::general_purpose};
 
     let mut status: DatabaseStatus = serde_json::from_value(json!({
         "dbms": "files",
@@ -290,14 +295,16 @@ fn resolve_restore_storage_rejects_a_bad_ciphertext() {
                   "restore": { "action": true, "engine": "restic", "storageCiphertext": "bm9wZQ==" } }
     }))
     .unwrap();
-    assert!(resolve_restore_storage(&mut status, &general_purpose::STANDARD.encode([7u8; 32])).is_err());
+    assert!(
+        resolve_restore_storage(&mut status, &general_purpose::STANDARD.encode([7u8; 32])).is_err()
+    );
     assert!(status.data.restore.storage.is_none());
 }
 
 fn encrypt_json_gcm(plaintext: &[u8], master_key_b64: &str) -> String {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::{Aes256Gcm, Key, Nonce};
-    use base64::{engine::general_purpose, Engine};
+    use base64::{Engine, engine::general_purpose};
 
     let key_bytes = general_purpose::STANDARD.decode(master_key_b64).unwrap();
     let key = Key::<Aes256Gcm>::try_from(key_bytes.as_slice()).unwrap();
@@ -328,8 +335,8 @@ fn ping_payload_sends_method_only_when_set() {
 
 #[test]
 fn upload_status_sends_stats_only_when_set() {
-    use crate::services::api::endpoints::agent::backup::upload::status::StatusUploadRequest;
     use crate::domain::files::sync::stats::SyncStats;
+    use crate::services::api::endpoints::agent::backup::upload::status::StatusUploadRequest;
     let request = |stats: Option<serde_json::Value>| StatusUploadRequest {
         generated_id: "g".into(),
         backup_storage_id: "bs".into(),
@@ -339,9 +346,17 @@ fn upload_status_sends_stats_only_when_set() {
         backup_id: "b".into(),
         stats,
     };
-    let sync = SyncStats { transfers: 2, deletes: 1, replica_bytes: Some(8), ..Default::default() };
+    let sync = SyncStats {
+        transfers: 2,
+        deletes: 1,
+        replica_bytes: Some(8),
+        ..Default::default()
+    };
     let with = serde_json::to_value(request(Some(sync.report()))).unwrap();
-    assert_eq!(with["stats"], serde_json::json!({"filesTransferred": 2, "filesDeleted": 1, "replicaBytes": 8}));
+    assert_eq!(
+        with["stats"],
+        serde_json::json!({"filesTransferred": 2, "filesDeleted": 1, "replicaBytes": 8})
+    );
     let unmeasured = SyncStats::default().report();
     assert!(unmeasured["replicaBytes"].is_null(), "{unmeasured}");
     let without = serde_json::to_value(request(None)).unwrap();

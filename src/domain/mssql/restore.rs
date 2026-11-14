@@ -10,7 +10,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogger>) -> Result<()> {
-    logger.log("debug", format!("Starting MSSQL restore for database {}", cfg.name));
+    logger.log(
+        "debug",
+        format!("Starting MSSQL restore for database {}", cfg.name),
+    );
 
     let Some(format) = MssqlFormat::from_path(&restore_file) else {
         let message = format!(
@@ -30,7 +33,10 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
     let target_exists = connection::check_restore_target(&cfg).await?;
 
     for leftover in connection::leftover_side_databases(&cfg).await? {
-        logger.log("warn", format!("Removing side database {leftover} left by an interrupted restore"));
+        logger.log(
+            "warn",
+            format!("Removing side database {leftover} left by an interrupted restore"),
+        );
         drop_or_warn(&cfg, &leftover, &logger).await;
     }
 
@@ -42,7 +48,15 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         cfg.database.clone()
     };
 
-    if let Err(error) = run_sqlpackage(cfg.clone(), restore_into.clone(), restore_file, sqlpackage_args, Arc::clone(&logger)).await {
+    if let Err(error) = run_sqlpackage(
+        cfg.clone(),
+        restore_into.clone(),
+        restore_file,
+        sqlpackage_args,
+        Arc::clone(&logger),
+    )
+    .await
+    {
         drop_or_warn(&cfg, &restore_into, &logger).await;
         if target_exists {
             logger.log("info", format!("{} was left untouched", cfg.database));
@@ -64,19 +78,41 @@ async fn drop_or_warn(cfg: &DatabaseConfig, database: &str, logger: &JobLogger) 
     }
 }
 
-async fn replace_target(cfg: &DatabaseConfig, side_database: &str, logger: &JobLogger) -> Result<()> {
+async fn replace_target(
+    cfg: &DatabaseConfig,
+    side_database: &str,
+    logger: &JobLogger,
+) -> Result<()> {
     let start = Instant::now();
     if let Err(error) = connection::drop_database(cfg, &cfg.database).await {
         drop_or_warn(cfg, side_database, logger).await;
         return Err(error);
     }
-    logger.log_command(format!("DROP DATABASE IF EXISTS [{}]", cfg.database), None, Some(0), Some(start.elapsed().as_millis() as f64));
+    logger.log_command(
+        format!("DROP DATABASE IF EXISTS [{}]", cfg.database),
+        None,
+        Some(0),
+        Some(start.elapsed().as_millis() as f64),
+    );
 
     let start = Instant::now();
     connection::rename_database(cfg, side_database, &cfg.database)
         .await
-        .with_context(|| format!("{} was dropped and the restored data is in {side_database}: rename it by hand", cfg.database))?;
-    logger.log_command(format!("ALTER DATABASE [{side_database}] MODIFY NAME = [{}]", cfg.database), None, Some(0), Some(start.elapsed().as_millis() as f64));
+        .with_context(|| {
+            format!(
+                "{} was dropped and the restored data is in {side_database}: rename it by hand",
+                cfg.database
+            )
+        })?;
+    logger.log_command(
+        format!(
+            "ALTER DATABASE [{side_database}] MODIFY NAME = [{}]",
+            cfg.database
+        ),
+        None,
+        Some(0),
+        Some(start.elapsed().as_millis() as f64),
+    );
     Ok(())
 }
 

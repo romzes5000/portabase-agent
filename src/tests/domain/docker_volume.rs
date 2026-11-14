@@ -93,11 +93,17 @@ fn tar_succeeded_tolerates_only_files_changed_while_read() {
 
     let changed = "tar: vol/busy.log: file changed as we read it\ntar: vol/other.log: file changed as we read it\n";
     assert!(tar_succeeded(Some(0), ""));
-    assert!(tar_succeeded(Some(0), "tar: vol/app.sock: socket ignored\n"));
+    assert!(tar_succeeded(
+        Some(0),
+        "tar: vol/app.sock: socket ignored\n"
+    ));
     assert!(tar_succeeded(Some(1), changed));
     assert!(!tar_succeeded(Some(1), ""));
     assert!(!tar_succeeded(Some(1), "tar: short read\n"));
-    assert!(!tar_succeeded(Some(1), &format!("{changed}tar: vol/x: Cannot open: Permission denied\n")));
+    assert!(!tar_succeeded(
+        Some(1),
+        &format!("{changed}tar: vol/x: Cannot open: Permission denied\n")
+    ));
     assert!(!tar_succeeded(Some(2), changed));
     assert!(!tar_succeeded(None, ""));
 }
@@ -111,7 +117,10 @@ async fn docker_volume_ping_true_for_existing_volume() {
     let docker = client().expect("docker daemon required for this test");
     let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
     docker
-        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .create_volume(VolumeCreateRequest {
+            name: Some(vol.clone()),
+            ..Default::default()
+        })
         .await
         .unwrap();
 
@@ -120,9 +129,16 @@ async fn docker_volume_ping_true_for_existing_volume() {
     assert!(reachable);
 
     let missing = volume_config("portabase-does-not-exist-xyz");
-    assert!(!crate::domain::docker_volume::ping::run(missing).await.unwrap());
+    assert!(
+        !crate::domain::docker_volume::ping::run(missing)
+            .await
+            .unwrap()
+    );
 
-    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
+    docker
+        .remove_volume(&vol, None::<RemoveVolumeOptions>)
+        .await
+        .ok();
 }
 
 fn volume_config(volume_name: &str) -> crate::services::config::DatabaseConfig {
@@ -160,14 +176,18 @@ async fn ensure_image(docker: &bollard::Docker, image: &str) {
 }
 
 async fn seed_volume(docker: &bollard::Docker, volume: &str, filename: &str, content: &str) {
-    run_in_volume(docker, volume, &format!("printf '%s' '{content}' > /vol/{filename}")).await;
+    run_in_volume(
+        docker,
+        volume,
+        &format!("printf '%s' '{content}' > /vol/{filename}"),
+    )
+    .await;
 }
 
 async fn run_in_volume(docker: &bollard::Docker, volume: &str, script: &str) {
     use bollard::models::{ContainerCreateBody, HostConfig};
     use bollard::query_parameters::{
-        CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
-        WaitContainerOptions,
+        CreateContainerOptions, RemoveContainerOptions, StartContainerOptions, WaitContainerOptions,
     };
     use futures::StreamExt;
 
@@ -186,11 +206,20 @@ async fn run_in_volume(docker: &bollard::Docker, volume: &str, script: &str) {
         .create_container(None::<CreateContainerOptions>, body)
         .await
         .unwrap();
-    docker.start_container(&created.id, None::<StartContainerOptions>).await.unwrap();
+    docker
+        .start_container(&created.id, None::<StartContainerOptions>)
+        .await
+        .unwrap();
     let mut wait = docker.wait_container(&created.id, None::<WaitContainerOptions>);
     while wait.next().await.is_some() {}
     docker
-        .remove_container(&created.id, Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(
+            &created.id,
+            Some(RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
         .await
         .ok();
 }
@@ -202,21 +231,35 @@ async fn docker_volume_backup_keeps_file_ownership() {
     use bollard::query_parameters::RemoveVolumeOptions;
 
     let _env_guard = ENV_GUARD.lock().await;
-    unsafe { std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox"); }
+    unsafe {
+        std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox");
+    }
 
     let docker = client().expect("docker daemon required");
     let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
     docker
-        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .create_volume(VolumeCreateRequest {
+            name: Some(vol.clone()),
+            ..Default::default()
+        })
         .await
         .unwrap();
-    run_in_volume(&docker, &vol, "echo owned > /vol/owned.txt && chown 999:998 /vol/owned.txt").await;
+    run_in_volume(
+        &docker,
+        &vol,
+        "echo owned > /vol/owned.txt && chown 999:998 /vol/owned.txt",
+    )
+    .await;
 
     let tmp = tempfile::TempDir::new().unwrap();
     let logger = std::sync::Arc::new(crate::services::backup::logger::JobLogger::new());
-    let tar = crate::domain::docker_volume::backup::run(volume_config(&vol), tmp.path().to_path_buf(), logger)
-        .await
-        .unwrap();
+    let tar = crate::domain::docker_volume::backup::run(
+        volume_config(&vol),
+        tmp.path().to_path_buf(),
+        logger,
+    )
+    .await
+    .unwrap();
 
     let mut archive = tar::Archive::new(std::fs::File::open(&tar).unwrap());
     let owner = archive
@@ -227,7 +270,10 @@ async fn docker_volume_backup_keeps_file_ownership() {
         .map(|entry| (entry.header().uid().unwrap(), entry.header().gid().unwrap()));
     assert_eq!(owner, Some((999, 998)));
 
-    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
+    docker
+        .remove_volume(&vol, None::<RemoveVolumeOptions>)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -237,12 +283,17 @@ async fn docker_volume_backup_captures_files() {
     use bollard::query_parameters::RemoveVolumeOptions;
 
     let _env_guard = ENV_GUARD.lock().await;
-    unsafe { std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox"); }
+    unsafe {
+        std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox");
+    }
 
     let docker = client().expect("docker daemon required");
     let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
     docker
-        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .create_volume(VolumeCreateRequest {
+            name: Some(vol.clone()),
+            ..Default::default()
+        })
         .await
         .unwrap();
     seed_volume(&docker, &vol, "hello.txt", "backup-me").await;
@@ -256,9 +307,15 @@ async fn docker_volume_backup_captures_files() {
 
     assert!(tar.is_file());
     let names = tar_entry_names(&tar).await;
-    assert!(names.iter().any(|n| n.ends_with("hello.txt")), "entries: {names:?}");
+    assert!(
+        names.iter().any(|n| n.ends_with("hello.txt")),
+        "entries: {names:?}"
+    );
 
-    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
+    docker
+        .remove_volume(&vol, None::<RemoveVolumeOptions>)
+        .await
+        .ok();
 }
 
 async fn tar_entry_names(tar_path: &std::path::Path) -> Vec<String> {
@@ -275,14 +332,19 @@ async fn docker_volume_restore_is_clean_replace() {
     use crate::domain::docker_volume::docker::client;
     use bollard::models::VolumeCreateRequest;
     use bollard::query_parameters::RemoveVolumeOptions;
-    
+
     let _env_guard = ENV_GUARD.lock().await;
-    unsafe { std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox"); }
+    unsafe {
+        std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox");
+    }
 
     let docker = client().expect("docker daemon required");
     let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
     docker
-        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .create_volume(VolumeCreateRequest {
+            name: Some(vol.clone()),
+            ..Default::default()
+        })
         .await
         .unwrap();
 
@@ -297,7 +359,7 @@ async fn docker_volume_restore_is_clean_replace() {
     )
     .await
     .unwrap();
-    
+
     seed_volume(&docker, &vol, "drift.txt", "added-later").await;
 
     // Restore uploads the raw Docker tar directly.
@@ -307,9 +369,15 @@ async fn docker_volume_restore_is_clean_replace() {
 
     let listing = list_volume(&docker, &vol).await;
     assert!(listing.contains("keeper.txt"), "listing: {listing}");
-    assert!(!listing.contains("drift.txt"), "clean-replace failed, listing: {listing}");
+    assert!(
+        !listing.contains("drift.txt"),
+        "clean-replace failed, listing: {listing}"
+    );
 
-    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
+    docker
+        .remove_volume(&vol, None::<RemoveVolumeOptions>)
+        .await
+        .ok();
 }
 
 async fn list_volume(docker: &bollard::Docker, volume: &str) -> String {
@@ -331,14 +399,24 @@ async fn list_volume(docker: &bollard::Docker, volume: &str) -> String {
         }),
         ..Default::default()
     };
-    let created = docker.create_container(None::<CreateContainerOptions>, body).await.unwrap();
-    docker.start_container(&created.id, None::<StartContainerOptions>).await.unwrap();
+    let created = docker
+        .create_container(None::<CreateContainerOptions>, body)
+        .await
+        .unwrap();
+    docker
+        .start_container(&created.id, None::<StartContainerOptions>)
+        .await
+        .unwrap();
     let mut wait = docker.wait_container(&created.id, None::<WaitContainerOptions>);
     while wait.next().await.is_some() {}
 
     let mut logs = docker.logs(
         &created.id,
-        Some(LogsOptions { stdout: true, stderr: false, ..Default::default() }),
+        Some(LogsOptions {
+            stdout: true,
+            stderr: false,
+            ..Default::default()
+        }),
     );
     let mut out = String::new();
     while let Some(chunk) = logs.next().await {
@@ -347,7 +425,13 @@ async fn list_volume(docker: &bollard::Docker, volume: &str) -> String {
         }
     }
     docker
-        .remove_container(&created.id, Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .remove_container(
+            &created.id,
+            Some(RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            }),
+        )
         .await
         .ok();
     out
@@ -355,24 +439,33 @@ async fn list_volume(docker: &bollard::Docker, volume: &str) -> String {
 
 #[tokio::test]
 async fn sweep_removes_labeled_helpers() {
-    use crate::domain::docker_volume::docker::{client, create_helper, sweep_ephemeral, EPHEMERAL_LABEL};
+    use crate::domain::docker_volume::docker::{
+        EPHEMERAL_LABEL, client, create_helper, sweep_ephemeral,
+    };
     use bollard::models::VolumeCreateRequest;
     use bollard::query_parameters::{ListContainersOptions, RemoveVolumeOptions};
     use std::collections::HashMap;
-    
+
     let _env_guard = ENV_GUARD.lock().await;
-    unsafe { std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox"); }
+    unsafe {
+        std::env::set_var("PORTABASE_HELPER_IMAGE", "busybox");
+    }
     let docker = client().expect("docker daemon required");
 
     let vol = format!("portabase-test-{}", uuid::Uuid::new_v4());
     docker
-        .create_volume(VolumeCreateRequest { name: Some(vol.clone()), ..Default::default() })
+        .create_volume(VolumeCreateRequest {
+            name: Some(vol.clone()),
+            ..Default::default()
+        })
         .await
         .unwrap();
 
     ensure_image(&docker, "busybox").await;
 
-    let helper = create_helper(&docker, "busybox", &vol, "sweep-test", true, None).await.unwrap();
+    let helper = create_helper(&docker, "busybox", &vol, "sweep-test", true, None)
+        .await
+        .unwrap();
 
     let removed = sweep_ephemeral(&docker).await.unwrap();
     assert!(removed >= 1);
@@ -380,10 +473,21 @@ async fn sweep_removes_labeled_helpers() {
     let mut filters = HashMap::new();
     filters.insert("label".to_string(), vec![format!("{EPHEMERAL_LABEL}=true")]);
     let remaining = docker
-        .list_containers(Some(ListContainersOptions { all: true, filters: Some(filters), ..Default::default() }))
+        .list_containers(Some(ListContainersOptions {
+            all: true,
+            filters: Some(filters),
+            ..Default::default()
+        }))
         .await
         .unwrap();
-    assert!(remaining.iter().all(|c| c.id.as_deref() != Some(helper.id.as_str())));
+    assert!(
+        remaining
+            .iter()
+            .all(|c| c.id.as_deref() != Some(helper.id.as_str()))
+    );
 
-    docker.remove_volume(&vol, None::<RemoveVolumeOptions>).await.ok();
+    docker
+        .remove_volume(&vol, None::<RemoveVolumeOptions>)
+        .await
+        .ok();
 }

@@ -8,7 +8,10 @@ use std::time::Instant;
 
 pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogger>) -> Result<()> {
     tokio::task::spawn_blocking(move || -> Result<()> {
-        logger.log("debug", format!("Starting SQLite restore for database {}", cfg.name));
+        logger.log(
+            "debug",
+            format!("Starting SQLite restore for database {}", cfg.name),
+        );
 
         let db_path_str = if cfg.path.is_empty() {
             anyhow::bail!("Database path not configured");
@@ -39,12 +42,29 @@ pub async fn run(cfg: DatabaseConfig, restore_file: PathBuf, logger: Arc<JobLogg
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            logger.log_command("sqlite3", Some(stderr.clone()), Some(exit_code), Some(duration_ms));
-            logger.log("error", format!("SQLite restore failed for {}: {}", cfg.name, stderr));
+            logger.log_command(
+                "sqlite3",
+                Some(stderr.clone()),
+                Some(exit_code),
+                Some(duration_ms),
+            );
+            logger.log(
+                "error",
+                format!("SQLite restore failed for {}: {}", cfg.name, stderr),
+            );
             anyhow::bail!("SQLite restore failed for {}", cfg.name);
         }
 
-        logger.log_command("sqlite3", if stderr.is_empty() { None } else { Some(stderr) }, Some(0), Some(duration_ms));
+        logger.log_command(
+            "sqlite3",
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
+            Some(0),
+            Some(duration_ms),
+        );
         logger.log("info", format!("SQLite restore completed for {}", cfg.name));
         Ok(())
     })

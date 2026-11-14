@@ -17,7 +17,10 @@ use tracing::error;
 pub const LOCAL_STORAGE_USER: &str = "portabase";
 
 pub fn local_storage_password(master_key_b64: &str) -> Result<String> {
-    Ok(hex::encode(derive_key(master_key_b64, b"portabase/local-storage/v1")?))
+    Ok(hex::encode(derive_key(
+        master_key_b64,
+        b"portabase/local-storage/v1",
+    )?))
 }
 
 pub struct LocalProvider;

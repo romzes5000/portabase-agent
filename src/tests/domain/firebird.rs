@@ -5,9 +5,9 @@ use crate::utils::compress::{compress_to_tar_gz_large, decompress_large_tar_gz};
 use std::path::PathBuf;
 use std::time::Duration;
 use tempfile::TempDir;
+use testcontainers::core::IntoContainerPort;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
-use testcontainers::core::IntoContainerPort;
 use tracing::{error, info};
 
 async fn create_config() -> (ContainerAsync<GenericImage>, DatabaseConfig) {
@@ -71,19 +71,27 @@ async fn firebird_backup_restore_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let file_path = db
+        .backup(
+            backup_path,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     assert!(file_path.is_file());
 
-    let compression = compress_to_tar_gz_large(&file_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let compression = compress_to_tar_gz_large(
+        &file_path,
+        std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+    )
+    .await
+    .unwrap();
     assert!(compression.compressed_path.is_file());
 
-    let files = decompress_large_tar_gz(
-        compression.compressed_path.as_path(),
-        temp_dir.path(),
-    )
+    let files = decompress_large_tar_gz(compression.compressed_path.as_path(), temp_dir.path())
         .await
         .unwrap();
 
@@ -99,7 +107,13 @@ async fn firebird_backup_restore_test() {
     info!("Reachable: {}", reachable);
     assert!(reachable);
 
-    match db.restore(&backup_file, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await {
+    match db
+        .restore(
+            &backup_file,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+    {
         Ok(_) => {
             info!("Restore succeeded for {}", config.generated_id);
             assert!(true)

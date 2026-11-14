@@ -1,9 +1,9 @@
 use crate::services::api::models::agent::restore::ResultRestoreResponse;
 use crate::services::api::{ApiClient, ApiError};
+use crate::services::backup::logger::JobLogEntry;
 use anyhow::Result;
 use reqwest::Method;
 use serde::Serialize;
-use crate::services::backup::logger::JobLogEntry;
 
 #[derive(Serialize)]
 pub struct ResultRestoreRequest {

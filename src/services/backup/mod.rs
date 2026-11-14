@@ -1,9 +1,9 @@
 pub mod compressor;
-pub mod logger;
 pub mod dispatcher;
 pub mod executor;
 pub mod files_engine;
 pub mod helpers;
+pub mod logger;
 pub mod models;
 pub mod result;
 pub mod runner;

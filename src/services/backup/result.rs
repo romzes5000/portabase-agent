@@ -34,7 +34,7 @@ impl BackupService {
                 file_size,
                 &result.generated_id,
                 logs,
-                duration_ms
+                duration_ms,
             )
             .await
             .map_err(|e| {

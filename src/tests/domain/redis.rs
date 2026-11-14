@@ -60,7 +60,13 @@ async fn redis_backup_test() {
 
     let db = DatabaseFactory::create_for_backup(config.clone()).await;
 
-    let file_path = db.backup(backup_path, std::sync::Arc::new(crate::services::backup::logger::JobLogger::new())).await.unwrap();
+    let file_path = db
+        .backup(
+            backup_path,
+            std::sync::Arc::new(crate::services::backup::logger::JobLogger::new()),
+        )
+        .await
+        .unwrap();
 
     assert!(file_path.is_file());
 }

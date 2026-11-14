@@ -25,7 +25,13 @@ pub fn derive_agent_key(master_key: &[u8], agent_id: &str) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-pub fn sign_request(agent_key: &[u8], method: &str, path: &str, timestamp: &str, body: &[u8]) -> String {
+pub fn sign_request(
+    agent_key: &[u8],
+    method: &str,
+    path: &str,
+    timestamp: &str,
+    body: &[u8],
+) -> String {
     let body_hash = hex::encode(Sha256::digest(body));
     let mut mac = HmacSha256::new_from_slice(agent_key).expect("HMAC accepts any key length");
     mac.update(format!("{method}\n{path}\n{timestamp}\n{body_hash}").as_bytes());
@@ -58,7 +64,13 @@ impl ApiClient {
         self
     }
 
-    fn sign(&self, request: RequestBuilder, method: &Method, path: &str, body: &[u8]) -> RequestBuilder {
+    fn sign(
+        &self,
+        request: RequestBuilder,
+        method: &Method,
+        path: &str,
+        body: &[u8],
+    ) -> RequestBuilder {
         let Some(agent_key) = &self.agent_key else {
             return request;
         };
@@ -67,7 +79,13 @@ impl ApiClient {
             .expect("system clock before 1970")
             .as_secs()
             .to_string();
-        let signature = sign_request(agent_key, method.as_str(), &format!("/api{path}"), &timestamp, body);
+        let signature = sign_request(
+            agent_key,
+            method.as_str(),
+            &format!("/api{path}"),
+            &timestamp,
+            body,
+        );
         request
             .header("X-Agent-Timestamp", timestamp)
             .header("X-Agent-Signature", signature)
@@ -113,7 +131,11 @@ impl ApiClient {
             .http
             .request(method.clone(), &url)
             .header(CONTENT_TYPE, "application/json");
-        let res = self.sign(request, &method, path, &bytes).body(bytes).send().await?;
+        let res = self
+            .sign(request, &method, path, &bytes)
+            .body(bytes)
+            .send()
+            .await?;
 
         let status = res.status();
         let body_text = res.text().await.unwrap_or_default();

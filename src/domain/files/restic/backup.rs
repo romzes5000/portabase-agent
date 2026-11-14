@@ -35,7 +35,10 @@ pub async fn snapshot(
         args.push("--one-file-system".into());
     }
 
-    logger.log("info", format!("Snapshotting {} into {}", root.display(), repo.repository()));
+    logger.log(
+        "info",
+        format!("Snapshotting {} into {}", root.display(), repo.repository()),
+    );
     let run = repo.run(&args, logger).await?;
     for error in &run.errors {
         logger.log("warn", format!("Unreadable: {error}"));
@@ -56,7 +59,10 @@ pub async fn snapshot(
                     None
                 }
             };
-            let removed = s.files_removed.map(|n| format!(", {n} removed")).unwrap_or_default();
+            let removed = s
+                .files_removed
+                .map(|n| format!(", {n} removed"))
+                .unwrap_or_default();
             logger.log(
                 "info",
                 format!(
@@ -73,7 +79,10 @@ pub async fn snapshot(
                 if repo.is_append_only() {
                     logger.log(
                         "warn",
-                        format!("Incomplete snapshot {} left for the dashboard to forget", short(&s.snapshot_id)),
+                        format!(
+                            "Incomplete snapshot {} left for the dashboard to forget",
+                            short(&s.snapshot_id)
+                        ),
                     );
                     fate = "snapshot not restorable (the dashboard forgets it)";
                 } else {
@@ -81,7 +90,11 @@ pub async fn snapshot(
                     if forget.code != 0 {
                         logger.log(
                             "error",
-                            format!("Could not forget incomplete snapshot {}: {}", s.snapshot_id, forget.error("forget")),
+                            format!(
+                                "Could not forget incomplete snapshot {}: {}",
+                                s.snapshot_id,
+                                forget.error("forget")
+                            ),
                         );
                     }
                 }
@@ -95,12 +108,24 @@ pub async fn snapshot(
     }
 }
 
-async fn removed(repo: &ResticRepo, host: &str, s: &BackupSummary, logger: &JobLogger) -> Result<Option<u64>> {
-    let listed = repo.run(["snapshots", "--json", "--host", host], logger).await?;
+async fn removed(
+    repo: &ResticRepo,
+    host: &str,
+    s: &BackupSummary,
+    logger: &JobLogger,
+) -> Result<Option<u64>> {
+    let listed = repo
+        .run(["snapshots", "--json", "--host", host], logger)
+        .await?;
     if listed.code != 0 {
         return Err(listed.error("snapshots"));
     }
-    let snapshots: Vec<Snapshot> =
-        serde_json::from_str(listed.stdout.trim()).context("unexpected `restic snapshots` output")?;
-    Ok(files_removed(&snapshots, &s.snapshot_id, s.files_changed, s.files_unmodified))
+    let snapshots: Vec<Snapshot> = serde_json::from_str(listed.stdout.trim())
+        .context("unexpected `restic snapshots` output")?;
+    Ok(files_removed(
+        &snapshots,
+        &s.snapshot_id,
+        s.files_changed,
+        s.files_unmodified,
+    ))
 }

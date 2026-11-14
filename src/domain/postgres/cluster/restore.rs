@@ -5,7 +5,9 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::super::connection::{is_superuser, psql_binary_name, select_pg_path, server_version, terminate_all_connections};
+use super::super::connection::{
+    is_superuser, psql_binary_name, select_pg_path, server_version, terminate_all_connections,
+};
 use crate::services::backup::logger::JobLogger;
 use crate::services::config::DatabaseConfig;
 
@@ -22,7 +24,10 @@ pub async fn run(
         let version = match handle.block_on(server_version(&cfg)) {
             Ok(v) => v,
             Err(e) => {
-                logger.log("error", format!("Failed to get server version for {}: {:?}", cfg.name, e));
+                logger.log(
+                    "error",
+                    format!("Failed to get server version for {}: {:?}", cfg.name, e),
+                );
                 return Err(e.into());
             }
         };
@@ -30,11 +35,23 @@ pub async fn run(
         match handle.block_on(is_superuser(&cfg)) {
             Ok(true) => {}
             Ok(false) => {
-                logger.log("error", format!("postgresql-cluster restore requires a superuser role for {}", cfg.name));
-                anyhow::bail!("postgresql-cluster restore requires a superuser role for {}", cfg.name);
+                logger.log(
+                    "error",
+                    format!(
+                        "postgresql-cluster restore requires a superuser role for {}",
+                        cfg.name
+                    ),
+                );
+                anyhow::bail!(
+                    "postgresql-cluster restore requires a superuser role for {}",
+                    cfg.name
+                );
             }
             Err(e) => {
-                logger.log("error", format!("Failed to check superuser status for {}: {:?}", cfg.name, e));
+                logger.log(
+                    "error",
+                    format!("Failed to check superuser status for {}: {:?}", cfg.name, e),
+                );
                 return Err(e.into());
             }
         }
@@ -42,20 +59,40 @@ pub async fn run(
         let psql = select_pg_path(&version).join(psql_binary_name());
 
         if let Err(e) = handle.block_on(terminate_all_connections(&cfg)) {
-            logger.log("error", format!("Failed to terminate connections for cluster {}: {:?}", cfg.name, e));
+            logger.log(
+                "error",
+                format!(
+                    "Failed to terminate connections for cluster {}: {:?}",
+                    cfg.name, e
+                ),
+            );
             return Err(e.into());
         }
-        logger.log("info", format!("All user database connections terminated for cluster {}", cfg.name));
+        logger.log(
+            "info",
+            format!(
+                "All user database connections terminated for cluster {}",
+                cfg.name
+            ),
+        );
 
-        logger.log("info", format!("Replaying cluster dump for {} via {:?}", cfg.name, psql));
+        logger.log(
+            "info",
+            format!("Replaying cluster dump for {} via {:?}", cfg.name, psql),
+        );
 
         let start = Instant::now();
         let output = Command::new(&psql)
-            .arg("--host").arg(&cfg.host)
-            .arg("--port").arg(cfg.port.to_string())
-            .arg("--username").arg(&cfg.username)
-            .arg("--dbname").arg("postgres")
-            .arg("-f").arg(&restore_file)
+            .arg("--host")
+            .arg(&cfg.host)
+            .arg("--port")
+            .arg(cfg.port.to_string())
+            .arg("--username")
+            .arg(&cfg.username)
+            .arg("--dbname")
+            .arg("postgres")
+            .arg("-f")
+            .arg(&restore_file)
             .envs(env)
             .output();
         let duration_ms = start.elapsed().as_millis() as f64;
@@ -67,11 +104,32 @@ pub async fn run(
                 let combined = format!("{}{}", stdout, stderr);
                 let exit_code = o.status.code().unwrap_or(-1);
                 if o.status.success() {
-                    logger.log_command("psql", if combined.is_empty() { None } else { Some(combined) }, Some(0), Some(duration_ms));
-                    logger.log("info", format!("Cluster restore completed for {}", cfg.name));
+                    logger.log_command(
+                        "psql",
+                        if combined.is_empty() {
+                            None
+                        } else {
+                            Some(combined)
+                        },
+                        Some(0),
+                        Some(duration_ms),
+                    );
+                    logger.log(
+                        "info",
+                        format!("Cluster restore completed for {}", cfg.name),
+                    );
                     Ok(())
                 } else {
-                    logger.log_command("psql", if combined.is_empty() { None } else { Some(combined) }, Some(exit_code), Some(duration_ms));
+                    logger.log_command(
+                        "psql",
+                        if combined.is_empty() {
+                            None
+                        } else {
+                            Some(combined)
+                        },
+                        Some(exit_code),
+                        Some(duration_ms),
+                    );
                     anyhow::bail!("Cluster restore (psql) failed for {}", cfg.name);
                 }
             }

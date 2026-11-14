@@ -16,7 +16,6 @@ impl FirebirdDatabase {
     pub fn new(cfg: DatabaseConfig) -> Self {
         Self { cfg }
     }
-
 }
 
 #[async_trait]

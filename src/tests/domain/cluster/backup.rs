@@ -18,7 +18,10 @@ async fn produces_sql_with_roles_and_databases() {
 
     assert!(sql.is_file());
     let contents = std::fs::read_to_string(&sql).unwrap();
-    assert!(contents.contains("CREATE ROLE"), "expected CREATE ROLE in dump");
+    assert!(
+        contents.contains("CREATE ROLE"),
+        "expected CREATE ROLE in dump"
+    );
     assert!(
         contents.contains("CREATE DATABASE") || contents.contains("\\connect"),
         "expected database statements in dump"
@@ -42,9 +45,14 @@ async fn requires_superuser() {
 
     let dir = TempDir::new().unwrap();
     let logger = Arc::new(JobLogger::new());
-    let err = cluster::backup::run(weak.clone(), dir.path().to_path_buf(), env_for(&weak), logger)
-        .await
-        .unwrap_err();
+    let err = cluster::backup::run(
+        weak.clone(),
+        dir.path().to_path_buf(),
+        env_for(&weak),
+        logger,
+    )
+    .await
+    .unwrap_err();
 
     assert!(
         err.to_string().contains("superuser"),

@@ -39,14 +39,26 @@ impl Database for PostgresClusterDatabase {
 
     async fn backup(&self, dir: &Path, logger: Arc<JobLogger>) -> Result<PathBuf> {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Backup.as_str()).await?;
-        let res = backup::run(self.cfg.clone(), dir.to_path_buf(), self.build_env(), logger).await;
+        let res = backup::run(
+            self.cfg.clone(),
+            dir.to_path_buf(),
+            self.build_env(),
+            logger,
+        )
+        .await;
         FileLock::release(&self.cfg.generated_id).await?;
         res
     }
 
     async fn restore(&self, file: &Path, logger: Arc<JobLogger>) -> Result<()> {
         FileLock::acquire(&self.cfg.generated_id, DbOpLock::Restore.as_str()).await?;
-        let res = restore::run(self.cfg.clone(), file.to_path_buf(), self.build_env(), logger).await;
+        let res = restore::run(
+            self.cfg.clone(),
+            file.to_path_buf(),
+            self.build_env(),
+            logger,
+        )
+        .await;
         FileLock::release(&self.cfg.generated_id).await?;
         res
     }

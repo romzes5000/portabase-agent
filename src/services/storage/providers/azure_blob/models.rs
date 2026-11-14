@@ -30,7 +30,6 @@ fn parse_connection_string(cs: &str) -> std::collections::HashMap<String, String
         .collect()
 }
 
-
 pub(crate) fn ensure_account_in_endpoint(endpoint: &str, account: &str) -> String {
     let trimmed = endpoint.trim_end_matches('/');
     if account.is_empty() {

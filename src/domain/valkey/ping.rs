@@ -2,7 +2,7 @@ use crate::services::config::DatabaseConfig;
 use anyhow::{Context, Result};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
     let mut cmd = Command::new("valkey-cli");
@@ -31,7 +31,7 @@ pub async fn run(cfg: DatabaseConfig) -> Result<bool> {
             let output = output.context("Failed to execute valkey-cli")?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            
+
             if stderr.contains("NOAUTH") {
                 error!("Valkey authentication failed (NOAUTH required)");
                 return Ok(false);
