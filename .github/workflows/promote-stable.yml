@@ -6,6 +6,7 @@ name: Promote oxem-stable
 on:
   push:
     branches: [oxem/stable]
+    paths: [STABLE]
 
 permissions:
   contents: read
